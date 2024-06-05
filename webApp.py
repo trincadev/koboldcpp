@@ -34,9 +34,13 @@ def getNext():
 
 @app.route(rootPath+'/GetAccuracyFromRecordedAudio', methods=['POST'])
 def GetAccuracyFromRecordedAudio():
-
-    event = {'body': json.dumps(request.get_json(force=True))}
-    lambda_correct_output = lambdaSpeechToScore.lambda_handler(event, [])
+    try:
+        event = {'body': json.dumps(request.get_json(force=True))}
+        lambda_correct_output = lambdaSpeechToScore.lambda_handler(event, [])
+    except Exception as e:
+        import traceback
+        print(e)
+        print(traceback.format_exc())
     return lambda_correct_output
 
 
