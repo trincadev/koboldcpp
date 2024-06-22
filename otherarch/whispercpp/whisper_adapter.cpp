@@ -15,6 +15,7 @@
 #include <vector>
 #include <cstring>
 #include <mutex>
+#include <cinttypes>
 
 #define COMMON_SAMPLE_RATE 16000
 
@@ -50,7 +51,8 @@ static std::vector<float> resample_wav(const std::vector<float>& input, uint32_t
 
     if(whisperdebugmode==1)
     {
-        printf("\nResample wav from %d to %d (in size: %d, out size: %d)", input_rate,output_rate,input_size,output.size());
+        printf("\nResample wav from %" PRIu32 " to %" PRIu32 " (in size: %zu, out size: %zu)",
+	       input_rate, output_rate, input_size, static_cast<std::size_t>(output.size()));
     }
 
     // Perform simple linear interpolation resampling
@@ -159,12 +161,11 @@ bool whispertype_load_model(const whisper_load_model_inputs inputs)
             vulkan_info_str += ",";
         }
     }
-    if(vulkan_info_str=="")
+    if(vulkan_info_str!="")
     {
-        vulkan_info_str = "0";
+        whispervulkandeviceenv = "GGML_VK_VISIBLE_DEVICES="+vulkan_info_str;
+        putenv((char*)whispervulkandeviceenv.c_str());
     }
-    whispervulkandeviceenv = "GGML_VK_VISIBLE_DEVICES="+vulkan_info_str;
-    putenv((char*)whispervulkandeviceenv.c_str());
 
 
     std::string modelfile = inputs.model_filename;
@@ -270,6 +271,8 @@ whisper_generation_outputs whispertype_generate(const whisper_generation_inputs 
     if(!inputs.quiet)
     {
         printf("\nWhisper Transcribe Output: %s",whisper_output_text.c_str());
+    } else {
+        printf("\nWhisper Transcribe Done.");
     }
     output.text = whisper_output_text.c_str();
     output.status = 1;

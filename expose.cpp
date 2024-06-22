@@ -68,13 +68,11 @@ extern "C"
                 vulkan_info_str += ",";
             }
         }
-        if(vulkan_info_str=="")
+        if(vulkan_info_str!="")
         {
-            vulkan_info_str = "0";
+            vulkandeviceenv = "GGML_VK_VISIBLE_DEVICES="+vulkan_info_str;
+            putenv((char*)vulkandeviceenv.c_str());
         }
-
-        vulkandeviceenv = "GGML_VK_VISIBLE_DEVICES="+vulkan_info_str;
-        putenv((char*)vulkandeviceenv.c_str());
 
         executable_path = inputs.executable_path;
 
@@ -277,11 +275,11 @@ extern "C"
     }
 
     static std::vector<int> toks; //just share a static object for token counting
-    token_count_outputs token_count(const char * input)
+    token_count_outputs token_count(const char * input, bool addbos)
     {
         std::string inputstr = input;
         token_count_outputs output;
-        toks = gpttype_get_token_arr(inputstr);
+        toks = gpttype_get_token_arr(inputstr,addbos);
         output.count = toks.size();
         output.ids = toks.data(); //this may be slightly unsafe
         return output;

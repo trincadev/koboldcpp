@@ -1,3 +1,6 @@
+# Add custom options to Makefile.local rather than editing this file.
+-include $(abspath $(lastword ${MAKEFILE_LIST})).local
+
 default: koboldcpp_default koboldcpp_failsafe koboldcpp_openblas koboldcpp_noavx2 koboldcpp_clblast koboldcpp_clblast_noavx2 koboldcpp_cublas koboldcpp_hipblas koboldcpp_vulkan koboldcpp_vulkan_noavx2
 tools: quantize_gpt2 quantize_gptj quantize_gguf quantize_neox quantize_mpt quantize_clip whispermain sdmain gguf-split
 dev: koboldcpp_openblas
@@ -50,7 +53,7 @@ SIMPLECFLAGS =
 FULLCFLAGS =
 NONECFLAGS =
 
-OPENBLAS_FLAGS = -DGGML_USE_OPENBLAS -I/usr/local/include/openblas
+OPENBLAS_FLAGS = -DGGML_USE_OPENBLAS -DGGML_USE_BLAS -I/usr/local/include/openblas
 CLBLAST_FLAGS = -DGGML_USE_CLBLAST
 FAILSAFE_FLAGS = -DUSE_FAILSAFE
 VULKAN_FLAGS = -DGGML_USE_VULKAN
@@ -139,13 +142,16 @@ ifndef LLAMA_NO_ACCELERATE
 	# Mac M1 - include Accelerate framework.
 	# `-framework Accelerate` works on Mac Intel as well, with negliable performance boost (as of the predict time).
 	ifeq ($(UNAME_S),Darwin)
-		CFLAGS  += -DGGML_USE_ACCELERATE
+		CFLAGS  += -DGGML_USE_ACCELERATE -DGGML_USE_BLAS
+		CXXFLAGS  += -DGGML_USE_ACCELERATE -DGGML_USE_BLAS
 		LDFLAGS += -framework Accelerate
+		OBJS += ggml-blas.o
 	endif
 endif
 
 # it is recommended to use the CMAKE file to build for cublas if you can - will likely work better
 OBJS_CUDA_TEMP_INST = $(patsubst %.cu,%.o,$(wildcard ggml-cuda/template-instances/fattn-wmma*.cu))
+OBJS_CUDA_TEMP_INST += $(patsubst %.cu,%.o,$(wildcard ggml-cuda/template-instances/mmq*.cu))
 OBJS_CUDA_TEMP_INST += $(patsubst %.cu,%.o,$(wildcard ggml-cuda/template-instances/fattn-vec*q4_0-q4_0.cu))
 OBJS_CUDA_TEMP_INST += $(patsubst %.cu,%.o,$(wildcard ggml-cuda/template-instances/fattn-vec*q8_0-q8_0.cu))
 OBJS_CUDA_TEMP_INST += $(patsubst %.cu,%.o,$(wildcard ggml-cuda/template-instances/fattn-vec*f16-f16.cu))
@@ -447,6 +453,10 @@ llavaclip_default.o: examples/llava/clip.cpp examples/llava/clip.h
 llavaclip_cublas.o: examples/llava/clip.cpp examples/llava/clip.h
 	$(CXX) $(CXXFLAGS) $(CUBLAS_FLAGS) -c $< -o $@
 
+#this is only used for openblas and accelerate
+ggml-blas.o: ggml-blas.cpp ggml-blas.h
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 #version 3 libs
 ggml_v3.o: otherarch/ggml_v3.c otherarch/ggml_v3.h
 	$(CC)  $(FASTCFLAGS) $(FULLCFLAGS) -c $< -o $@
@@ -531,6 +541,8 @@ gpttype_adapter_failsafe.o: $(GPTTYPE_ADAPTER)
 	$(CXX) $(CXXFLAGS) $(FAILSAFE_FLAGS) -c $< -o $@
 gpttype_adapter.o: $(GPTTYPE_ADAPTER)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+gpttype_adapter_openblas.o: $(GPTTYPE_ADAPTER)
+	$(CXX) $(CXXFLAGS) $(OPENBLAS_FLAGS) -c $< -o $@
 gpttype_adapter_clblast.o: $(GPTTYPE_ADAPTER)
 	$(CXX) $(CXXFLAGS) $(CLBLAST_FLAGS) -c $< -o $@
 gpttype_adapter_cublas.o: $(GPTTYPE_ADAPTER)
@@ -568,7 +580,7 @@ koboldcpp_default: ggml.o ggml_v3.o ggml_v2.o ggml_v1.o expose.o gpttype_adapter
 	$(DEFAULT_BUILD)
 
 ifdef OPENBLAS_BUILD
-koboldcpp_openblas: ggml_v4_openblas.o ggml_v3_openblas.o ggml_v2_openblas.o ggml_v1.o expose.o gpttype_adapter.o sdcpp_default.o whispercpp_default.o llavaclip_default.o llava.o ggml-backend_default.o $(OBJS_FULL) $(OBJS)
+koboldcpp_openblas: ggml_v4_openblas.o ggml_v3_openblas.o ggml_v2_openblas.o ggml_v1.o expose.o gpttype_adapter_openblas.o sdcpp_default.o whispercpp_default.o llavaclip_default.o llava.o ggml-backend_default.o ggml-blas.o $(OBJS_FULL) $(OBJS)
 	$(OPENBLAS_BUILD)
 else
 koboldcpp_openblas:
