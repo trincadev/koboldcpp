@@ -208,7 +208,10 @@ int main(int argc, char ** argv) {
 
     // load the model and apply lora adapter, if any
     LOG("%s: load the model and apply lora adapter, if any\n", __func__);
-    std::tie(model, ctx) = llama_init_from_gpt_params(params);
+    llama_init_result llama_init = llama_init_from_gpt_params(params);
+
+    model = llama_init.model;
+    ctx = llama_init.context;
     if (sparams.cfg_scale > 1.f) {
         struct llama_context_params lparams = llama_context_params_from_gpt_params(params);
         ctx_guidance = llama_new_context_with_model(model, lparams);
@@ -217,6 +220,40 @@ int main(int argc, char ** argv) {
     if (model == NULL) {
         LOG_TEE("%s: error: unable to load model\n", __func__);
         return 1;
+    }
+
+    LOG("%s: llama threadpool init = n_threads = %d\n",
+        __func__,
+        (int) params.cpuparams.n_threads
+    );
+    struct ggml_threadpool_params tpp_batch =
+            ggml_threadpool_params_from_cpu_params(params.cpuparams_batch);
+    struct ggml_threadpool_params tpp =
+            ggml_threadpool_params_from_cpu_params(params.cpuparams);
+
+    set_process_priority(params.cpuparams.priority);
+
+    struct ggml_threadpool * threadpool_batch = NULL;
+    if (!ggml_threadpool_params_match(&tpp, &tpp_batch)) {
+        threadpool_batch = ggml_threadpool_new(&tpp_batch);
+        if (!threadpool_batch) {
+            LOG_TEE("%s: batch threadpool create failed : n_threads %d\n", __func__, tpp_batch.n_threads);
+            exit(1);
+        }
+
+        // Start the non-batch threadpool in the paused state
+        tpp.paused = true;
+    }
+
+    struct ggml_threadpool * threadpool = ggml_threadpool_new(&tpp);
+    if (!threadpool) {
+        LOG_TEE("%s: threadpool create failed : n_threads %d\n", __func__, tpp.n_threads);
+        exit(1);
+    }
+
+    llama_attach_threadpool(ctx, threadpool, threadpool_batch);
+    if (ctx_guidance) {
+        llama_attach_threadpool(ctx_guidance, threadpool, threadpool_batch);
     }
 
     const int n_ctx_train = llama_n_ctx_train(model);
@@ -265,9 +302,9 @@ int main(int argc, char ** argv) {
         }
     }
 
-    const bool add_bos = llama_should_add_bos_token(model);
+    const bool add_bos = llama_add_bos_token(model);
     if (!llama_model_has_encoder(model)) {
-        GGML_ASSERT(llama_add_eos_token(model) != 1);
+        GGML_ASSERT(!llama_add_eos_token(model));
     }
     LOG("add_bos: %d\n", add_bos);
 
@@ -986,6 +1023,9 @@ int main(int argc, char ** argv) {
 
     llama_sampling_free(ctx_sampling);
     llama_backend_free();
+
+    ggml_threadpool_free(threadpool);
+    ggml_threadpool_free(threadpool_batch);
 
 #ifndef LOG_DISABLE_LOGS
     LOG_TEE("Log end\n");

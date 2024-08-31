@@ -730,6 +730,9 @@ class GGUFWriter:
     def add_ssm_time_step_rank(self, value: int) -> None:
         self.add_uint32(Keys.SSM.TIME_STEP_RANK.format(arch=self.arch), value)
 
+    def add_ssm_dt_b_c_rms(self, value: bool) -> None:
+        self.add_bool(Keys.SSM.DT_B_C_RMS.format(arch=self.arch), value)
+
     def add_tokenizer_model(self, model: str) -> None:
         self.add_string(Keys.Tokenizer.MODEL, model)
 
@@ -827,6 +830,9 @@ class GGUFWriter:
 
     def add_eot_token_id(self, id: int) -> None:
         self.add_uint32(Keys.Tokenizer.EOT_ID, id)
+
+    def add_eom_token_id(self, id: int) -> None:
+        self.add_uint32(Keys.Tokenizer.EOM_ID, id)
 
     def _pack(self, fmt: str, value: Any, skip_pack_prefix: bool = False) -> bytes:
         pack_prefix = ''

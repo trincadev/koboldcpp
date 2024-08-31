@@ -23,6 +23,10 @@ curl -fLo koboldcpp https://github.com/LostRuins/koboldcpp/releases/latest/downl
 ```
 After running this command you can launch Koboldcpp from the current directory using `./koboldcpp` in the terminal (for CLI usage, run with `--help`).
 
+## MacOS (Precompiled Binary)
+- PyInstaller binaries for Modern ARM64 MacOS (M1, M2, M3) are now available! **[Simply download and run the MacOS binary](https://github.com/LostRuins/koboldcpp/releases/latest)**
+- Alternatively, or for older x86 MacOS computers, you can clone the repo and compile from source code, see Compiling for MacOS below.
+
 ## Run on Colab
 - KoboldCpp now has an **official Colab GPU Notebook**! This is an easy way to get started without installing anything in a minute or two. [Try it here!](https://colab.research.google.com/github/LostRuins/koboldcpp/blob/concedo/colab.ipynb).
 - Note that KoboldCpp is not responsible for your usage of this Colab Notebook, you should ensure that your own usage complies with Google Colab's terms of use.
@@ -34,13 +38,10 @@ After running this command you can launch Koboldcpp from the current directory u
 - The official docker can be found at https://hub.docker.com/r/koboldai/koboldcpp
 - If you're building your own docker, remember to set CUDA_DOCKER_ARCH or enable LLAMA_PORTABLE
 
-## MacOS
-- You will need to clone the repo and compile from source code, see Compiling for MacOS below.
-
 ## Obtaining a GGUF model
 - KoboldCpp uses GGUF models. They are not included here, but you can download GGUF files from other places such as [TheBloke's Huggingface](https://huggingface.co/TheBloke). Search for "GGUF" on huggingface.co for plenty of compatible models in the `.gguf` format.
 - For beginners, we recommend the models [Airoboros Mistral](https://huggingface.co/TheBloke/airoboros-mistral2.2-7B-GGUF/resolve/main/airoboros-mistral2.2-7b.Q4_K_S.gguf) or [Tiefighter 13B](https://huggingface.co/KoboldAI/LLaMA2-13B-Tiefighter-GGUF/resolve/main/LLaMA2-13B-Tiefighter.Q4_K_S.gguf) (larger model).
-- [Alternatively, you can download the tools to convert models to the GGUF format yourself here](https://github.com/LostRuins/koboldcpp/releases/download/v1.69.1/koboldcpp_tools_6jul.zip). Run `convert-hf-to-gguf.py` to convert them, then `quantize_gguf.exe` to quantize the result.
+- [Alternatively, you can download the tools to convert models to the GGUF format yourself here](https://kcpptools.concedo.workers.dev). Run `convert-hf-to-gguf.py` to convert them, then `quantize_gguf.exe` to quantize the result.
 
 ## Improving Performance
 - **GPU Acceleration**: If you're on Windows with an Nvidia GPU you can get CUDA support out of the box using the `--usecublas`  flag (Nvidia Only), or `--usevulkan` (Any GPU), make sure you select the correct .exe with CUDA support.

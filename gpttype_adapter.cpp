@@ -501,11 +501,52 @@ void sample_top_a(llama_token_data_array * candidates, float a, size_t min_keep)
     candidates->size = last_idx;
 }
 
+void sample_xtc(llama_token_data_array * candidates, float xtc_threshold, float xtc_probability, std::mt19937 & rng)
+{
+    if (xtc_threshold > 0.5f || xtc_probability <= 0.0f || candidates->size <= 1) {
+        return;
+    }
+
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    float roll = dist(rng);
+    if(roll>=xtc_probability) //if dice roll fails, skip xtc
+    {
+        return;
+    }
+
+    llama_sample_softmax(nullptr, candidates);
+
+    //calculate how many tokens cross the xtc threshold
+    size_t last_idx = candidates->size;
+    for (size_t i = 0; i < candidates->size; ++i) {
+        // Go until we reach a value under the threshold
+        float checkprob = candidates->data[i].p;
+        if (checkprob < xtc_threshold) {
+            last_idx = i;
+            break;
+        }
+    }
+
+    if(last_idx>1) //if there are 2 or more viable candidates
+    {
+        // then remove all other tokens above threshold EXCEPT the least likely one
+        for (size_t i = 0; i < last_idx - 1; ++i) {
+            candidates->data[i].logit -= 999.0f; //infinity gets wonky results downstream, this hack works well enough
+        }
+        candidates->sorted = false;
+
+    }  //otherwise xtc does not do anything
+
+    // printf("\n\nCandidates: %d, Threshold: %f, LastIdx: %d",candidates->size,xtc_threshold,last_idx);
+    // printf("\nCandidates: %f %f %f %f\n",candidates->data[0].p,candidates->data[1].p,candidates->data[2].p,candidates->data[3].p);
+
+}
+
 void sample_dry(int n_ctx, int penalty_range, float penalty_multiplier, float penalty_base, int allowed_length, const std::unordered_multimap<gpt_vocab::id, std::vector<gpt_vocab::id>>& restart_sequences, llama_token_data_array * candidates) {
     if (penalty_multiplier <= 0.0f || penalty_base <= 0.0f) {
         return;
     }
-    if (penalty_range <= 0) {
+    if (penalty_range <= 0 || penalty_range>n_ctx) {
         penalty_range = n_ctx;
     }
     auto last_n_repeat = std::min(std::min((int)current_context_tokens.size(), penalty_range), n_ctx);
@@ -698,6 +739,10 @@ void sample_dry(int n_ctx, int penalty_range, float penalty_multiplier, float pe
         candidates->data[token].logit -= penalty;
         ++count;
     }
+    if(count>0)
+    {
+        candidates->sorted = false;
+    }
     if (debugmode==1 && !dry_max_token_repeat.empty()) {
         printf("]\n");
     }
@@ -818,7 +863,8 @@ void sample_grammar(FileFormat file_format, int32_t n_vocab, llama_token_data_ar
 }
 
 int SampleLogits(const float * logits, int n_ctx, int n_vocab, int rep_pen_range, float rep_pen, float rep_pen_slope, float presence_penalty, float top_k, float top_a, float top_p, float min_p, float typical_p, float tfs, float temp, std::mt19937 & rng,
-int mirostat, float mirostat_tau, float mirostat_eta, float dry_multiplier, float dry_base, int dry_allowed_length, int dry_penalty_last_n, const std::vector<samplers> & sampler_order, llama_grammar * grammar, float dynatemp_range, float dynatemp_exponent, float smoothing_factor)
+int mirostat, float mirostat_tau, float mirostat_eta, float dry_multiplier, float dry_base, int dry_allowed_length, int dry_penalty_last_n, float xtc_threshold, float xtc_probability,
+const std::vector<samplers> & sampler_order, llama_grammar * grammar, float dynatemp_range, float dynatemp_exponent, float smoothing_factor)
 {
     int id = 0;
     std::vector<llama_token_data> candidates;
@@ -838,6 +884,12 @@ int mirostat, float mirostat_tau, float mirostat_eta, float dry_multiplier, floa
     if (grammar != nullptr) {
         sample_grammar(file_format, n_vocab, &candidates_p, grammar);
     }
+
+    //dry always first as logits cannot be resorted
+    sample_dry(n_ctx, dry_penalty_last_n, dry_multiplier, dry_base, dry_allowed_length, dry_sequence_breakers, &candidates_p);
+
+    //prefilter to top 5k tokens for improved speed
+    llama_sample_top_k(nullptr, &candidates_p, 5000, 1);
 
     if (mirostat == 1 || mirostat == 2)
     {
@@ -894,13 +946,14 @@ int mirostat, float mirostat_tau, float mirostat_eta, float dry_multiplier, floa
                     break;
                 case KCPP_SAMPLER_REP_PEN:
                     sample_rep_pen(n_ctx, rep_pen_range, rep_pen, rep_pen_slope, presence_penalty, &candidates_p);
-                    sample_dry(n_ctx, dry_penalty_last_n, dry_multiplier, dry_base, dry_allowed_length, dry_sequence_breakers, &candidates_p);
                     break;
                 default:
                     printf("\nSampleLogits: Unknown Sampler : %d",sampler_order[i]);
                     break;
             }
         }
+        //xtc always last
+        sample_xtc(&candidates_p, xtc_threshold, xtc_probability, rng);
         id = sample_token(&candidates_p, rng);
     }
 
@@ -983,8 +1036,8 @@ void PurgeMissingTokens(llama_context * ctx, std::vector<int> &current_context_t
     //if passed, save beginning of LCQ from old ctx as p1
     //remove all tokens from old ctx between p0 and p1, updating both arrays and kv, then continue as normal
 
-    const int ShortfallThreshold = 200 + (nctx/30); //dont trigger shifting if the distance between trimstart and currhead < this
-    const int SlackAllowance = 60 + (nctx/50); //in case the end text is slightly modified, be forgiving
+    const int ShortfallThreshold = 200 + std::min((nctx/30),140); //dont trigger shifting if the distance between trimstart and currhead < this
+    const int SlackAllowance = 60 + std::min((nctx/60),70); //in case the end text is slightly modified, be forgiving
 
     int trimstart = 0;
     int new_tokens_len = new_context_tokens.size();
@@ -1120,8 +1173,8 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
 
     file_format = in_file_format;
     file_format_meta = in_file_format_meta;
-    kcpp_params->n_threads = inputs.threads;
-    kcpp_params->n_threads_batch = inputs.blasthreads;
+    kcpp_params->cpuparams.n_threads = inputs.threads;
+    kcpp_params->cpuparams_batch.n_threads = inputs.blasthreads;
     bool isGguf = (file_format == FileFormat::GGUF_GENERIC);
     kcpp_params->n_batch = GetBatchSize(inputs.blasbatchsize, in_file_format);
     kcpp_params->n_ubatch = kcpp_params->n_batch;
@@ -1230,7 +1283,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             int err = llama_v2_apply_lora_from_file(llama_ctx_v2,
                                                  lora_filename.c_str(),
                                                  lora_base_arg,
-                                                 kcpp_params->n_threads);
+                                                 kcpp_params->cpuparams.n_threads);
             if (err != 0)
             {
                 fprintf(stderr, "%s: error: failed to apply lora adapter\n", __func__);
@@ -1242,7 +1295,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
 
         //determine mem per token
         const std::vector<int> tmp = {1, 2, 3, 4};
-        llama_v2_eval(llama_ctx_v2, tmp.data(), tmp.size(), 0, kcpp_params->n_threads);
+        llama_v2_eval(llama_ctx_v2, tmp.data(), tmp.size(), 0, kcpp_params->cpuparams.n_threads);
         return ModelLoadResult::SUCCESS;
     }
     else if(file_format == FileFormat::GGJT_3)
@@ -1297,7 +1350,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             int err = llama_v3_apply_lora_from_file(llama_ctx_v3,
                                                  lora_filename.c_str(),
                                                  lora_base_arg,
-                                                 kcpp_params->n_threads);
+                                                 kcpp_params->cpuparams.n_threads);
             if (err != 0)
             {
                 fprintf(stderr, "%s: error: failed to apply lora adapter\n", __func__);
@@ -1309,7 +1362,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
 
         //determine mem per token
         const std::vector<int> tmp = {1, 2, 3, 4};
-        auto er = llama_v3_eval(llama_ctx_v3, tmp.data(), tmp.size(), 0, kcpp_params->n_threads);
+        auto er = llama_v3_eval(llama_ctx_v3, tmp.data(), tmp.size(), 0, kcpp_params->cpuparams.n_threads);
         if(er!=0)
         {
             printf("\nLLAMA EVAL returned nonzero!\n");
@@ -1371,8 +1424,8 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
 
         llama_ctx_params.n_batch = kcpp_params->n_batch;
         llama_ctx_params.n_ubatch = kcpp_params->n_ubatch;
-        llama_ctx_params.n_threads = kcpp_params->n_threads;
-        llama_ctx_params.n_threads_batch = kcpp_params->n_threads_batch;
+        llama_ctx_params.n_threads = kcpp_params->cpuparams.n_threads;
+        llama_ctx_params.n_threads_batch = kcpp_params->cpuparams_batch.n_threads;
 
         #if defined(GGML_USE_CUDA) || defined(GGML_USE_VULKAN)
         bool ts_all_zero = true;
@@ -1486,11 +1539,11 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
         bool useWorldTokenizer = false;
         if (file_format == FileFormat::RWKV_1)
         {
-            rwkv_ctx_v2 = rwkv_v2_init_from_file(modelname.c_str(), kcpp_params->n_threads);
+            rwkv_ctx_v2 = rwkv_v2_init_from_file(modelname.c_str(), kcpp_params->cpuparams.n_threads);
         }
         else //rwkv_2
         {
-            rwkv_ctx_v3 = rwkv_init_from_file(modelname.c_str(), kcpp_params->n_threads);
+            rwkv_ctx_v3 = rwkv_init_from_file(modelname.c_str(), kcpp_params->cpuparams.n_threads);
 
             if(inputs.gpulayers>0)
             {
@@ -1569,7 +1622,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             rwkv_ctx_v3->logits_out = (float *)malloc(logitbufsiz);
             rwkv_ctx_v3->state_in = nullptr;
 
-            bool testeval = rwkv_eval(rwkv_ctx_v3, kcpp_params->n_threads, 0, rwkv_ctx_v3->state_in, rwkv_ctx_v3->state_out, rwkv_ctx_v3->logits_out);
+            bool testeval = rwkv_eval(rwkv_ctx_v3, kcpp_params->cpuparams.n_threads, 0, rwkv_ctx_v3->state_in, rwkv_ctx_v3->state_out, rwkv_ctx_v3->logits_out);
             if (!testeval)
             {
                 printf("\nError: RWKV Init Eval Failed!\n");
@@ -1601,7 +1654,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
         n_vocab = gpt2_ctx_v1.hparams.n_vocab;
 
          // determine the required inference memory per token:
-        legacy_gpt2_eval(gpt2_ctx_v1, kcpp_params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, file_format);
+        legacy_gpt2_eval(gpt2_ctx_v1, kcpp_params->cpuparams.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, file_format);
         return ModelLoadResult::SUCCESS;
     }
     else if (file_format == FileFormat::GPT2_2 || file_format==FileFormat::GPT2_3 || file_format==FileFormat::GPT2_4)
@@ -1623,7 +1676,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             n_vocab = gpt2_ctx_v3.hparams.n_vocab;
 
             // determine the required inference memory per token:
-            gpt2_eval(gpt2_ctx_v3, kcpp_params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, v3_use_scratch);
+            gpt2_eval(gpt2_ctx_v3, kcpp_params->cpuparams.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, v3_use_scratch);
             return ModelLoadResult::SUCCESS;
         }
         else
@@ -1646,7 +1699,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             n_vocab = gpt2_ctx_v2.hparams.n_vocab;
 
             // determine the required inference memory per token:
-            gpt2_v2_eval(gpt2_ctx_v2, kcpp_params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, file_format);
+            gpt2_v2_eval(gpt2_ctx_v2, kcpp_params->cpuparams.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, file_format);
             return ModelLoadResult::SUCCESS;
         }
     }
@@ -1667,7 +1720,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
         n_vocab = gptj_ctx_v1.hparams.n_vocab;
 
          // determine the required inference memory per token:
-        legacy_gptj_eval(gptj_ctx_v1, kcpp_params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, file_format);
+        legacy_gptj_eval(gptj_ctx_v1, kcpp_params->cpuparams.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, file_format);
 
         //if the logits are NAN or duplicated, it means the model is incompatible
         if(logits.size()>0 && IsNanCheck(logits[0]))
@@ -1698,14 +1751,14 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             n_vocab = gptj_ctx_v3.hparams.n_vocab;
 
             // determine the required inference memory per token:
-            gptj_eval(gptj_ctx_v3, kcpp_params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, v3_use_scratch);
+            gptj_eval(gptj_ctx_v3, kcpp_params->cpuparams.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, v3_use_scratch);
 
             //if the logits are NAN or duplicated, it means the model is incompatible
             std::vector<float> oldlogits(logits);
 
             //this is another hack because they change the library - we run the eval through the model
             //twice and compare logits. if they give the same logits for different inputs, model is broken
-            gptj_eval(gptj_ctx_v3, kcpp_params->n_threads, 0, {4, 5, 6, 7}, logits, mem_per_token, v3_use_scratch);
+            gptj_eval(gptj_ctx_v3, kcpp_params->cpuparams.n_threads, 0, {4, 5, 6, 7}, logits, mem_per_token, v3_use_scratch);
 
             if(logits.size()>0 && (IsNanCheck(logits[0]) || LogitsDuplicated(oldlogits,logits)))
             {
@@ -1736,14 +1789,14 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             n_vocab = gptj_ctx_v2.hparams.n_vocab;
 
             // determine the required inference memory per token:
-            gptj_v2_eval(gptj_ctx_v2, kcpp_params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
+            gptj_v2_eval(gptj_ctx_v2, kcpp_params->cpuparams.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
 
             //if the logits are NAN or duplicated, it means the model is incompatible
             std::vector<float> oldlogits(logits);
 
             //this is another hack because they change the library - we run the eval through the model
             //twice and compare logits. if they give the same logits for different inputs, model is broken
-            gptj_v2_eval(gptj_ctx_v2, kcpp_params->n_threads, 0, {4, 5, 6, 7}, logits, mem_per_token);
+            gptj_v2_eval(gptj_ctx_v2, kcpp_params->cpuparams.n_threads, 0, {4, 5, 6, 7}, logits, mem_per_token);
 
             if(logits.size()>0 && (IsNanCheck(logits[0]) || LogitsDuplicated(oldlogits,logits)))
             {
@@ -1774,7 +1827,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             n_vocab = neox_ctx_v3.hparams.n_vocab;
 
             // determine the required inference memory per token:
-            gpt_neox_eval(neox_ctx_v3, kcpp_params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, v3_use_scratch);
+            gpt_neox_eval(neox_ctx_v3, kcpp_params->cpuparams.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token, v3_use_scratch);
 
             return ModelLoadResult::SUCCESS;
         }
@@ -1798,7 +1851,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
             n_vocab = neox_ctx_v2.hparams.n_vocab;
 
             // determine the required inference memory per token:
-            gpt_neox_v2_eval(neox_ctx_v2, kcpp_params->n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
+            gpt_neox_v2_eval(neox_ctx_v2, kcpp_params->cpuparams.n_threads, 0, { 0, 1, 2, 3 }, logits, mem_per_token);
 
             if(logits.size()>0 && file_format==FileFormat::NEOX_2 && !IsNanCheck(logits[0]))
             {
@@ -1806,7 +1859,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
                 std::vector<int> test_embd = ::gpt_tokenize(vocab, "1 2 3 4 5 6 7");
                 auto orig_par_res = neox_ctx_v2.hparams.par_res;
                 neox_ctx_v2.hparams.par_res = 0; //test with residual false
-                gpt_neox_v2_eval(neox_ctx_v2, kcpp_params->n_threads, 0, test_embd, logits, mem_per_token);
+                gpt_neox_v2_eval(neox_ctx_v2, kcpp_params->cpuparams.n_threads, 0, test_embd, logits, mem_per_token);
                 neox_ctx_v2.hparams.par_res = orig_par_res;
                 int topid = std::max_element(logits.begin(),logits.end())-logits.begin();
                 std::string predicted = vocab.id_to_token[topid].c_str();
@@ -1835,7 +1888,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
         n_vocab = mpt_ctx_v3.hparams.n_vocab;
 
         // determine the required inference memory per token:
-        mpt_eval(mpt_ctx_v3, kcpp_params->n_threads, 0, { 0, 1, 2, 3 }, logits, false, mem_per_token, v3_use_scratch);
+        mpt_eval(mpt_ctx_v3, kcpp_params->cpuparams.n_threads, 0, { 0, 1, 2, 3 }, logits, false, mem_per_token, v3_use_scratch);
         return ModelLoadResult::SUCCESS;
     }
     else
@@ -1913,10 +1966,10 @@ int GetThreadsToUse(bool blasmode)
         }
         else
         {
-             return kcpp_params->n_threads_batch;
+             return kcpp_params->cpuparams_batch.n_threads;
         }
     }
-    return kcpp_params->n_threads;
+    return kcpp_params->cpuparams.n_threads;
 }
 
 generation_outputs gpttype_generate(const generation_inputs inputs)
@@ -1938,6 +1991,9 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
         llama_reset_timings(llama_ctx_v4);
     }
 
+    generation_finished = false; // Set current generation status
+    generated_tokens.clear(); // New Generation, new tokens
+
     concat_output_mtx.lock();
     concat_output = "";
     concat_output_reader_copy_poll = "";
@@ -1946,6 +2002,13 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     last_stop_reason = stop_reason::OUT_OF_TOKENS;
     stop_sequence.clear();
     special_stop_sequence.clear();
+    dry_repeat_count.clear();
+    dry_sequence_breakers.clear();
+    dry_max_token_repeat.clear();
+
+    double time0 = 0, time1 = 0, time2 = 0;
+    timer_start();
+
     for(int x=0;x<stop_token_max;++x)
     {
         std::string stopper = inputs.stop_sequence[x];
@@ -2070,6 +2133,8 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     kcpp_params->dry_base = inputs.dry_base;
     kcpp_params->dry_allowed_length = inputs.dry_allowed_length;
     kcpp_params->dry_penalty_last_n = inputs.dry_penalty_last_n;
+    kcpp_params->xtc_threshold = inputs.xtc_threshold;
+    kcpp_params->xtc_probability = inputs.xtc_probability;
     kcpp_params->dynatemp_range = inputs.dynatemp_range;
     kcpp_params->dynatemp_exponent = inputs.dynatemp_exponent;
     kcpp_params->n_ctx = inputs.max_context_length;
@@ -2133,8 +2198,6 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
 
     bool allow_regular_prints = (debugmode!=-1 && !inputs.quiet) || debugmode >= 1;
 
-    generation_finished = false; // Set current generation status
-    generated_tokens.clear(); // New Generation, new tokens
 
     std::string grammarstr = inputs.grammar;
     bool grammar_retain_state = inputs.grammar_retain_state;
@@ -2200,7 +2263,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
             else
             {
                 llava_images[i].clp_image_tokens = 0;
-                if (!llava_image_embed_make_with_clip_img(clp_ctx, kcpp_params->n_threads, clp_img_data, &llava_images[i].clp_img_embd, &llava_images[i].clp_image_tokens)) {
+                if (!llava_image_embed_make_with_clip_img(clp_ctx, kcpp_params->cpuparams.n_threads, clp_img_data, &llava_images[i].clp_img_embd, &llava_images[i].clp_image_tokens)) {
                     printf("\nError: Clip image %d failed to create embd!",i);
                 }
                 if(debugmode==1)
@@ -2408,8 +2471,8 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     bool startedsampling = false;
     bool v3_use_scratch = true; //for normal inference always use scratch
 
+    time0 = timer_check();
     timer_start();
-    double time1 = 0, time2 = 0;
 
     if(file_format == FileFormat::RWKV_1 || file_format==FileFormat::RWKV_2)
     {
@@ -2646,7 +2709,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
             top_k, top_a, top_p, min_p, typical_p, tfs_z, temp, rng,
             kcpp_params->mirostat, kcpp_params->mirostat_tau, kcpp_params->mirostat_eta,
             kcpp_params->dry_multiplier, kcpp_params->dry_base,
-            kcpp_params->dry_allowed_length, kcpp_params->dry_penalty_last_n,
+            kcpp_params->dry_allowed_length, kcpp_params->dry_penalty_last_n, kcpp_params->xtc_threshold, kcpp_params->xtc_probability,
             sampler_order, grammar, dynatemp_range, dynatemp_exponent, smoothing_factor);
 
             if (grammar != nullptr) {
@@ -2859,7 +2922,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     float pt2 = (time2*1000.0/(realnpredict==0?1:realnpredict));
     float ts2 = (1000.0/pt2);
     float tokens_per_second = (realnpredict == 0 ? 0 : realnpredict / (time1 + time2));
-    printf("\nCtxLimit:%d/%d, Amt:%d/%d, Process:%.2fs (%.1fms/T = %.2fT/s), Generate:%.2fs (%.1fms/T = %.2fT/s), Total:%.2fs (%.2fT/s)",(int)current_context_tokens.size(),(int)nctx, realnpredict, kcpp_params->n_predict, time1, pt1, ts1, time2, pt2, ts2, (time1 + time2), tokens_per_second);
+    printf("\nCtxLimit:%d/%d, Amt:%d/%d, Init:%.2fs, Process:%.2fs (%.1fms/T = %.2fT/s), Generate:%.2fs (%.1fms/T = %.2fT/s), Total:%.2fs (%.2fT/s)",(int)current_context_tokens.size(),(int)nctx, realnpredict, kcpp_params->n_predict, time0, time1, pt1, ts1, time2, pt2, ts2, (time1 + time2), tokens_per_second);
     fflush(stdout);
     output.status = 1;
     output.stopreason = last_stop_reason;
