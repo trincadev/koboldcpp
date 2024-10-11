@@ -365,7 +365,9 @@ else
 
 	ifdef LLAMA_CLBLAST
 		ifeq ($(UNAME_S),Darwin)
-			CLBLAST_BUILD = $(CXX) $(CXXFLAGS) $^ -lclblast -framework OpenCL $(ARCH_ADD) -shared -o $@.so $(LDFLAGS)
+			CLBLAST_BUILD = $(CXX) $(CXXFLAGS) $^ -lclblast -framework OpenCL $(ARCH_ADD) \
+			-L/usr/local/opt/clblas/lib \
+			-L/usr/local/opt/clblast/lib -shared -o $@.so $(LDFLAGS)
 		else
 			CLBLAST_BUILD = $(CXX) $(CXXFLAGS) $^ -lclblast -lOpenCL $(ARCH_ADD) -shared -o $@.so $(LDFLAGS)
 		endif
