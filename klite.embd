@@ -12,7 +12,7 @@ Current version indicated by LITEVER below.
 -->
 
 <script>
-	const LITEVER = 180;
+	const LITEVER = 184;
 	const urlParams = new URLSearchParams(window.location.search);
 	var localflag = true;
 	const STORAGE_PREFIX = (localflag?"e_":"")+"kaihordewebui_";
@@ -1265,6 +1265,20 @@ Current version indicated by LITEVER below.
 		}
 		.workerTable>tbody>tr>td{
 			padding: min(0.4vw, 5px);
+		}
+
+		.logprobstable
+		{
+			font-size: 11px;
+			width: 100%;
+			border-spacing: 2px;
+		}
+		.logprobstable table, th, td {
+			border: 2px solid #5d5d5d;
+		}
+		.logprobstable>tbody>tr>td
+		{
+			width: 16.4%;
 		}
 
 		.tablelines
@@ -2584,6 +2598,21 @@ Current version indicated by LITEVER below.
 			"worldinfo": []
 		},
 		{
+			"title":"Interactive StoryWriter",
+			"author":"Concedo",
+			"desc":"This is a different way to co-write a story with the AI. Each turn, the user describes what they want to see happen, and the AI continues the story including that information.",
+			"opmode":4,
+			"instruct_starttag": "\\n### Instruction:\\n",
+			"instruct_endtag": "\\n### Response:\\n",
+			"hide_user_inputs": true,
+			"prefmodel1":instructmodels1,
+			"prefmodel2":instructmodels2,
+			"prompt":instructendplaceholder+"Please input a story prompt. What is this story about?\n---",
+			"memory": instructstartplaceholder+"This is a powerful fiction writing tool. Write or continue the same story by adding complete paragraphs of text, trying your best to follow the instruction prompt given. Use slow, descriptive prose, like writing a long novel. Avoid any meta commentary, summaries or analysis, simply continue the same story as if writing a lengthy novel.\n",
+			"authorsnote": "",
+			"worldinfo": []
+		},
+		{
 			"title":"Fantasy Isekai",
 			"author":"Concedo",
 			"desc":"After an unfortunate encounter with Truck-Kun while crossing the road, you awaken and find yourself transported to a strange new world.",
@@ -3076,6 +3105,15 @@ Current version indicated by LITEVER below.
 			.replace(/&#039;/g, "\'");
 	}
 
+	function unescapeRegexNewlines(input)
+	{
+		return input.replace(/\\\\/g, "[temp_rr_seq]")
+		.replace(/\\n/g, "\n")
+		.replace(/\\t/g, "\t")
+		.replace(/\\r/g, "\r")
+		.replace(/\[temp_rr_seq\]/g, "\\\\");
+	}
+
 	function isNumeric(n)
 	{
 		return !isNaN(parseFloat(n)) && isFinite(n);
@@ -3270,12 +3308,20 @@ Current version indicated by LITEVER below.
 			console.log('.png file ended prematurely: no IEND header was found');
 		}
 
-		//find the chunk with the chara name, just check first and last letter
+		//find the chunk with the 'chara' name, just check first and last letter
 		let found = chunks.filter(x => (
 			x.name == "tEXt"
 			&& x.data.length > 6
 			&& String.fromCharCode(x.data[0]) == 'c')
 			&& String.fromCharCode(x.data[4]) == 'a');
+
+		//remove ext asset
+		found = found.filter(x => (
+			x.data.length > 12
+			&& !(String.fromCharCode(x.data[6]) == 'e'
+			&& String.fromCharCode(x.data[7]) == 'x'
+			&& String.fromCharCode(x.data[8]) == 't'
+			&& String.fromCharCode(x.data[9]) == '-')));
 
 		if (found.length==0)
 		{
@@ -3534,6 +3580,8 @@ Current version indicated by LITEVER below.
 						last_stop_reason = "stop";
 					}
 
+					last_response_obj = JSON.parse(JSON.stringify(data));
+
 					//handle some early stopping criterias
 					if (localsettings.opmode == 3) //stop on selfname found
 					{
@@ -3646,9 +3694,11 @@ Current version indicated by LITEVER below.
 				let dch = data.choices[0];
 				if (dch.text) {
 					synchro_polled_response = dch.text;
+					last_response_obj = JSON.parse(JSON.stringify(data));
 				}
 				else if (dch.message) {
 					synchro_polled_response = dch.message.content;
+					last_response_obj = JSON.parse(JSON.stringify(data));
 
 					if(localsettings.opmode==1 && gametext_arr.length>0 && synchro_polled_response!="")
 					{
@@ -3880,13 +3930,54 @@ Current version indicated by LITEVER below.
 					}
 				},
 				close() { //end of stream
-					synchro_polled_response = synchro_pending_stream;
-					synchro_pending_stream = "";
-					poll_pending_response();
+
+					let finish_actions = function()
+					{
+						synchro_polled_response = synchro_pending_stream;
+						synchro_pending_stream = "";
+						poll_pending_response();
+					};
+
 					//handle gen failures
 					if(resp.status==503)
 					{
+						finish_actions();
 						msgbox("Error while submitting prompt: Server appears to be busy.");
+					}
+					else
+					{
+						//if we wanted logprobs, try fetching them manually
+						if(localsettings.request_logprobs && last_response_obj==null)
+						{
+							fetch(custom_kobold_endpoint + koboldcpp_logprobs_endpoint, {
+								method: 'POST',
+								headers: get_kobold_header(),
+								body: JSON.stringify({
+								"genkey": lastcheckgenkey
+								}),
+							})
+							.then((response) => response.json())
+							.then((data) => {
+								//makes sure a delayed response doesnt arrive late and mess up
+								if (data && data.logprobs != null && last_response_obj==null) {
+									//fake a last response obj
+									let fakedresponse = {
+										"artificial_response": true,
+										"results":[{"logprobs":data.logprobs}]
+									};
+									last_response_obj = fakedresponse;
+								}
+								finish_actions();
+							})
+							.catch((error) => {
+								console.error('Error:', error);
+								finish_actions();
+							});
+						}
+						else
+						{
+							finish_actions();
+						}
 					}
 				},
 				abort(error) {
@@ -4188,6 +4279,7 @@ Current version indicated by LITEVER below.
 	const koboldcpp_version_endpoint = "/api/extra/version";
 	const koboldcpp_abort_endpoint = "/api/extra/abort";
 	const koboldcpp_check_endpoint = "/api/extra/generate/check";
+	const koboldcpp_logprobs_endpoint = "/api/extra/last_logprobs";
 	const koboldcpp_truemaxctxlen_endpoint = "/api/extra/true_max_context_length";
 	const koboldcpp_preloadstory_endpoint = "/api/extra/preloadstory";
 	const koboldcpp_transcribe_endpoint = "/api/extra/transcribe";
@@ -4221,6 +4313,11 @@ Current version indicated by LITEVER below.
 	const a1111_img2img_endpoint = "/sdapi/v1/img2img";
 	const a1111_interrogate_endpoint = "/sdapi/v1/interrogate";
 
+	const comfy_models_endpoint = "/models/checkpoints";
+	const comfy_generate_endpoint = "/prompt";
+	const comfy_history_endpoint = "/history";
+	const comfy_results_endpoint = "/view?filename=";
+
 	const xtts_gen_endpoint = "/tts_to_audio/";
 	const xtts_voices_endpoint = "/speakers_list";
 	const alltalk_gen_endpoint = "/api/tts-generate";
@@ -4239,6 +4336,7 @@ Current version indicated by LITEVER below.
 	const default_a1111_base = "http://localhost:7860";
 	const default_xtts_base = " http://localhost:8020";
 	const default_alltalk_base = "http://localhost:7851";
+	const default_comfy_base = "http://localhost:8188";
 
 	const XTTS_ID = 1000;
 	const ALLTALK_ID = 1001;
@@ -4318,6 +4416,7 @@ Current version indicated by LITEVER below.
 	var koboldcpp_version_obj = {};
 	var koboldcpp_has_vision = false;
 	var last_request_str = "No Requests Available"; //full context of last submitted request
+	var last_response_obj = null;
 	var lastcheckgenkey = ""; //for checking polled-streaming unique id when generating in kcpp
 	var globalabortcontroller = null;
 	var passed_ai_warning_local = false;
@@ -4362,10 +4461,11 @@ Current version indicated by LITEVER below.
 		saved_oai_custommodel: "", //customized oai custom model
 		saved_oai_role: 0, //0=user,1=assistant,2=system
 		saved_a1111_url: default_a1111_base,
+		saved_comfy_url: default_comfy_base,
 		saved_xtts_url: default_xtts_base,
 		saved_alltalk_url: default_alltalk_base,
 		prev_custom_endpoint_type: 0, //show a reconnect box to custom endpoint if needed. 0 is horde, otherwise its dropdown value+1
-		generate_images_mode: (localflag?0:1), //0=off, 1=horde, 2=a1111, 3=dalle
+		generate_images_mode: (localflag?0:1), //0=off, 1=horde, 2=a1111, 3=dalle, 4=comfy
 
 		autoscroll: true, //automatically scroll to bottom on render
 		printer_view: false, //automatically scroll to bottom on render
@@ -4389,6 +4489,7 @@ Current version indicated by LITEVER below.
 		instruct_has_markdown: true,
 		placeholder_tags: true,
 		render_special_tags: false,
+		request_logprobs: false,
 		persist_session: true,
 		speech_synth: 0, //0 is disabled, 1000 is xtts
 		xtts_voice: "female_calm",
@@ -4403,6 +4504,7 @@ Current version indicated by LITEVER below.
 		grammar:"",
 		tokenstreammode: (localflag?2:0), //0=off,1=pollstream,2=sse
 		generate_images_model: "stable_diffusion", //"" is disabled and "*" is all, anything else is the model name pulled from stable horde
+		img_gen_from_instruct: true,
 		img_autogen: false,
 		img_allownsfw: true,
 		img_cfgscale: 7,
@@ -4438,7 +4540,7 @@ Current version indicated by LITEVER below.
 		darkmode: true,
 
 		max_context_length: (localflag?4096:1800),
-		max_length: 200,
+		max_length: (localflag?220:200),
 		auto_ctxlen: true,
 		auto_genamt: true,
 		rep_pen: 1.07,
@@ -5121,7 +5223,10 @@ Current version indicated by LITEVER below.
 		{
 			connect_to_a1111(true);
 		}
-
+		else if(localsettings.generate_images_mode==4)
+		{
+			connect_to_comfyui(true);
+		}
 		if(!initial_fetched_kudos && localsettings.my_api_key!=defaultsettings.my_api_key)
 		{
 			document.getElementById("apikey").value = localsettings.my_api_key;
@@ -5237,7 +5342,7 @@ Current version indicated by LITEVER below.
 		.then(optionsdata => {
 			console.log(optionsdata);
 			if (optionsdata.samples_format == null || modelsdata.length == 0) {
-				msgbox("Invalid data received or no models found. Is A1111 running at the url " + localsettings.saved_a1111_url + " ?");
+				msgbox("Invalid data received or no models found. Is KoboldCpp / Forge / A1111 running at the url " + localsettings.saved_a1111_url + " ?");
 			} else {
 				let a1111_current_loaded_model = optionsdata.sd_model_checkpoint;
 				console.log("Current model loaded: " + a1111_current_loaded_model);
@@ -5254,16 +5359,147 @@ Current version indicated by LITEVER below.
 		}).catch((error) => {
 			if(!silent)
 			{
-				msgbox("A1111 Connect Error: " + error+"\nPlease make sure A1111 is running and properly configured!\nIn your local install of Automatic1111 WebUi, modify webui-user.bat and add these flags to enable API access:\n\nset COMMANDLINE_ARGS= --api --listen --cors-allow-origins=*\n");
+				msgbox("A1111 Connect Error: " + error+"\nPlease make sure KoboldCpp / Forge / A1111 is running and properly configured!\nIn your local install of Automatic1111 WebUi, modify webui-user.bat and add these flags to enable API access:\n\nset COMMANDLINE_ARGS= --api --listen --cors-allow-origins=*\n");
 			}
 			a1111_is_connected = false;
 		});
 		}).catch((error) => {
 			if(!silent)
 			{
-				msgbox("A1111 Connect Error: " + error+"\nPlease make sure A1111 is running and properly configured!\nIn your local install of Automatic1111 WebUi, modify webui-user.bat and add these flags to enable API access:\n\nset COMMANDLINE_ARGS= --api --listen --cors-allow-origins=*\n");
+				msgbox("A1111 Connect Error: " + error+"\nPlease make sure KoboldCpp / Forge / A1111 is running and properly configured!\nIn your local install of Automatic1111 WebUi, modify webui-user.bat and add these flags to enable API access:\n\nset COMMANDLINE_ARGS= --api --listen --cors-allow-origins=*\n");
 			}
 			a1111_is_connected = false;
+		});
+	}
+
+	var comfyui_is_connected = false;
+	function connect_to_comfyui(silent=false)
+    {
+		console.log("Attempt ComfyUI Connection...");
+		//establish initial connection to a1111 api
+		fetch(localsettings.saved_comfy_url + comfy_models_endpoint)
+		.then(x => x.json())
+		.then(modelsdata => {
+
+			if (modelsdata == null || modelsdata.length == 0) {
+				msgbox("Invalid data received or no models found. Is ComfyUI running at the url " + localsettings.saved_comfy_url + " ?\n\nIt must be launched with the flags --listen --enable-cors-header '*' to enable API access");
+			} else {
+				let current_loaded_model = modelsdata[0];
+				//repopulate our model list
+				let dropdown = document.getElementById("generate_images_comfy_model");
+				let selectionhtml = ``;
+				for (var i = 0; i < modelsdata.length; ++i) {
+					selectionhtml += `<option value="` + modelsdata[i] + `" `+(current_loaded_model==modelsdata[i]?"selected":"")+`>`+modelsdata[i]+`</option>`;
+				}
+				dropdown.innerHTML = selectionhtml;
+				comfyui_is_connected = true;
+			}
+		}).catch((error) => {
+			if(!silent)
+			{
+				msgbox("ComfyUI Connect Error: " + error+"\nPlease make sure ComfyUI is running at "+localsettings.saved_comfy_url+" and properly configured!\n\nIt must be launched with the flags --listen --enable-cors-header '*' to enable API access\n");
+			}
+			comfyui_is_connected = false;
+		});
+	}
+
+	function generate_comfy_image(req_payload)
+	{
+		let splits = req_payload.prompt.split("###");
+		let prompt = splits[0].trim();
+		let negprompt = (splits.length > 1 ? splits[1] : "");
+
+		let genimg_payload = {
+			"prompt": {
+				"3": {
+					"class_type": "KSampler",
+					"inputs": {
+						"cfg": req_payload.params.cfg_scale,
+						"denoise": 1,
+						"latent_image": ["5", 0],
+						"model": ["4", 0],
+						"negative": ["7", 0],
+						"positive": ["6", 0],
+						"sampler_name": "euler",
+						"scheduler": "normal",
+						"seed": Math.floor(Math.random() * 99999999),
+						"steps": req_payload.params.steps
+					}
+				},
+				"4": {
+					"class_type": "CheckpointLoaderSimple",
+					"inputs": {
+						"ckpt_name": req_payload.models[0]
+					}
+				},
+				"5": {
+					"class_type": "EmptyLatentImage",
+					"inputs": {
+						"batch_size": 1,
+						"height": req_payload.params.height,
+						"width": req_payload.params.width
+					}
+				},
+				"6": {
+					"class_type": "CLIPTextEncode",
+					"inputs": {
+						"clip": ["4", 1],
+						"text": prompt
+					}
+				},
+				"7": {
+					"class_type": "CLIPTextEncode",
+					"inputs": {
+						"clip": ["4", 1],
+						"text": negprompt
+					}
+				},
+				"8": {
+					"class_type": "VAEDecode",
+					"inputs": {
+						"samples": ["3", 0],
+						"vae": ["4", 2]
+					}
+				},
+				"9": {
+					"class_type": "SaveImage",
+					"inputs": {
+						"filename_prefix": "kliteimg",
+						"images": ["8", 0]
+					}
+				}
+			}
+		};
+
+		let gen_endpoint = localsettings.saved_comfy_url + comfy_generate_endpoint;
+		console.log(genimg_payload);
+
+		fetch(gen_endpoint, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify(genimg_payload),
+		})
+		.then(x => x.json())
+		.then(resp => {
+			console.log(resp);
+			if(resp.prompt_id)
+			{
+				let imgid = resp.prompt_id.toString();
+				let nimgtag = "[<|p|" + imgid + "|p|>]";
+				gametext_arr.push(nimgtag);
+				image_db[imgid] = { done: false, queue: "Generating", result: "", prompt:prompt, poll_category:2 };
+				image_db[imgid].aspect = (req_payload.params.width>req_payload.params.height?2:(req_payload.params.width<req_payload.params.height?1:0));
+				image_db[imgid].imsource = 0; //0=generated,1=uploaded
+			}else{
+				console.log("Generation Error!");
+				msgbox("Image Generation Failed!\n\nPlease make sure ComfyUI is running and properly configured!\n\nIt must be launched with the flag --enable-cors-header '*' to enable API access\n");
+			}
+
+		}).catch((error) => {
+			console.log("Generation Error: " + error);
+			msgbox("Image Generation Failed!\n\nPlease make sure ComfyUI is running and properly configured!\n\nIt must be launched with the flag --enable-cors-header '*' to enable API access\n");
 		});
 	}
 
@@ -5356,7 +5592,7 @@ Current version indicated by LITEVER below.
 
 	function set_a1111_endpoint()
 	{
-		inputBox("Enter Automatic1111 API endpoint","A1111 Endpoint Selection",localsettings.saved_a1111_url,"Input A1111 API URL", ()=>{
+		inputBox("Enter Local KoboldCpp / Forge / Automatic1111 API endpoint","KoboldCpp / Forge / A1111 Endpoint Selection",localsettings.saved_a1111_url,"Input A1111 API URL", ()=>{
 			let userinput = getInputBoxValue();
 			userinput = userinput.trim();
 			if(userinput!="" && userinput.slice(-1)=="/")
@@ -5370,6 +5606,26 @@ Current version indicated by LITEVER below.
 			if (userinput != null && userinput!="") {
 				localsettings.saved_a1111_url = userinput.trim();
 				connect_to_a1111(false);
+			}
+		},false);
+	}
+
+	function set_comfy_endpoint()
+	{
+		inputBox("Enter ComfyUI API endpoint","ComfyUI Endpoint Selection",localsettings.saved_comfy_url,"Input ComfyUI API URL", ()=>{
+			let userinput = getInputBoxValue();
+			userinput = userinput.trim();
+			if(userinput!="" && userinput.slice(-1)=="/")
+			{
+				userinput = userinput.slice(0, -1);
+			}
+			if(userinput=="")
+			{
+				userinput = default_comfy_base;
+			}
+			if (userinput != null && userinput!="") {
+				localsettings.saved_comfy_url = userinput.trim();
+				connect_to_comfyui(false);
 			}
 		},false);
 	}
@@ -6210,6 +6466,10 @@ Current version indicated by LITEVER below.
 					{
 						current_wi = load_nai_wi(new_loaded_storyobj);
 					}
+					else if(new_loaded_storyobj.length>=1 && new_loaded_storyobj[0].keys!="" && new_loaded_storyobj[0].value!="" && (new_loaded_storyobj[0].useForCharacterCreation === true || new_loaded_storyobj[0].useForCharacterCreation === false))
+					{
+						current_wi = load_aid_wi(new_loaded_storyobj);
+					}
 					else {
 						msgbox("Could not load selected json file. Does not appear to be a KoboldAI story or compatible format.");
 					}
@@ -6477,6 +6737,7 @@ Current version indicated by LITEVER below.
 					let tmp_kai = localsettings.saved_kai_addr;
 					let tmp_kai2 = localsettings.saved_kai_key;
 					let tmp_a1111 = localsettings.saved_a1111_url;
+					let tmp_comfy = localsettings.saved_comfy_url;
 					let tmp_xtts = localsettings.saved_xtts_url;
 					let tmp_imggen = localsettings.generate_images_mode;
 
@@ -6516,6 +6777,7 @@ Current version indicated by LITEVER below.
 					localsettings.saved_kai_addr = tmp_kai;
 					localsettings.saved_kai_key = tmp_kai2;
 					localsettings.saved_a1111_url = tmp_a1111;
+					localsettings.saved_comfy_url = tmp_comfy;
 					localsettings.saved_xtts_url = tmp_xtts;
 					localsettings.generate_images_mode = tmp_imggen;
 
@@ -6828,6 +7090,34 @@ Current version indicated by LITEVER below.
 		return loadedwi;
 	}
 
+	function load_aid_wi(obj)
+	{
+		console.log("Loading aid wi");
+		let loadedwi = [];
+		for (let i=0;i<obj.length;++i) {
+			var itm = obj[i];
+			var key = "";
+			if(itm.keys && itm.keys!="")
+			{
+				key = itm.keys;
+			}
+
+			let nwi = {
+				"key": key,
+				"keysecondary": "",
+				"keyanti": "",
+				"content": itm.value,
+				"comment": "",
+				"folder": null,
+				"selective": false,
+				"constant": false,
+				"probability":100
+			};
+			loadedwi.push(nwi);
+		}
+		return loadedwi;
+	}
+
 	function get_aetherroom_scenario()
 	{
 		inputBox("Enter aetherroom.club prompt URL, or 4-digit prompt number","Import from aetherroom.club","","https://aetherroom.club/1234", ()=>{
@@ -6859,6 +7149,7 @@ Current version indicated by LITEVER below.
 							"desc":data.description?data.description:"",
 							"opmode":2,
 							"adventure_context_mod":false,
+							"adventure_is_action":true,
 							"prefmodel1":adventuremodels1,
 							"prefmodel2":adventuremodels2,
 							"prompt":data.promptContent?data.promptContent:"",
@@ -7436,6 +7727,10 @@ Current version indicated by LITEVER below.
 
 		localsettings.opmode = temp_scenario.opmode;
 
+		if (temp_scenario.hide_user_inputs===true) {
+			regexreplace_data.push({"p":`{{\\[INPUT\\]}}\\n.+?\\n{{\\[OUTPUT\\]}}`,"r":"","b":false,"d":true});
+		}
+
 		if(temp_scenario.opmode == 2)
 		{
 
@@ -7670,7 +7965,97 @@ Current version indicated by LITEVER below.
 
 	function show_last_req()
 	{
-		msgbox(last_request_str,"Last Request Sent",false);
+		let lr = "Request:\n" + last_request_str;
+		if(last_response_obj!=null)
+		{
+			lr += "\n\nResponse:\n" + JSON.stringify(last_response_obj);
+		}
+		msgbox(lr,"Last Request Info",false);
+	}
+	function show_last_logprobs()
+	{
+		let lastlogprobsstr = "";
+		let kcpp_has_logprobs = (last_response_obj!=null && last_response_obj.results && last_response_obj.results.length > 0 && last_response_obj.results[0].logprobs!=null);
+		let oai_has_logprobs = (last_response_obj!=null && last_response_obj.choices && last_response_obj.choices.length > 0 && last_response_obj.choices[0].logprobs!=null);
+		if(kcpp_has_logprobs || oai_has_logprobs)
+		{
+			let lpc = (kcpp_has_logprobs?last_response_obj.results[0].logprobs.content:last_response_obj.choices[0].logprobs.content);
+			if(!lpc)
+			{
+				if(oai_has_logprobs)
+				{
+					//try legacy logprobs api
+					let seltokarr = last_response_obj.choices[0].logprobs.tokens;
+					let sellogarr = last_response_obj.choices[0].logprobs.token_logprobs;
+					let topdict = last_response_obj.choices[0].logprobs.top_logprobs;
+					if(seltokarr && sellogarr && topdict)
+					{
+						lastlogprobsstr += `<table class="logprobstable">`;
+						for(let i=0;i<seltokarr.length;++i)
+						{
+							lastlogprobsstr += "<tr>";
+							lastlogprobsstr += `<td style="color:lime">${escapeHtml(seltokarr[i])}<br>(${(Math.exp(sellogarr[i])*100).toFixed(2)}%)</td>`;
+							let addspace = false;
+							let dictkeys = Object.keys(topdict[i]);
+							for(let j=0;j<5;++j)
+							{
+								if(j>=dictkeys.length)
+								{
+									lastlogprobsstr += `<td></td>`;
+									continue;
+								}
+								if(dictkeys[j]==seltokarr[i])
+								{
+									addspace = true;
+									continue;
+								}
+								lastlogprobsstr += `<td>${escapeHtml(dictkeys[j])}<br>(${(Math.exp(topdict[i][dictkeys[j]])*100).toFixed(2)}%)</td>`
+							}
+							if(addspace)
+							{
+								lastlogprobsstr += `<td></td>`;
+							}
+							lastlogprobsstr += "</tr>";
+						}
+						lastlogprobsstr += "</table>";
+					}
+				}
+			}
+			else
+			{
+				lastlogprobsstr += `<table class="logprobstable">`;
+				for(let i=0;i<lpc.length;++i)
+				{
+					lastlogprobsstr += "<tr>";
+					let cn = lpc[i];
+					lastlogprobsstr += `<td style="color:lime">${escapeHtml(cn.token)}<br>(${(Math.exp(cn.logprob)*100).toFixed(2)}%)</td>`;
+					let addspace = false;
+					for(let j=0;j<5;++j)
+					{
+						if(j>=cn.top_logprobs.length)
+						{
+							lastlogprobsstr += `<td></td>`;
+							continue;
+						}
+						if(cn.top_logprobs[j].token==cn.token)
+						{
+							addspace = true;
+							continue;
+						}
+						lastlogprobsstr += `<td>${escapeHtml(cn.top_logprobs[j].token)}<br>(${(Math.exp(cn.top_logprobs[j].logprob)*100).toFixed(2)}%)</td>`
+					}
+					if(addspace)
+					{
+						lastlogprobsstr += `<td></td>`;
+					}
+					lastlogprobsstr += "</tr>";
+				}
+				lastlogprobsstr += "</table>";
+			}
+		} else {
+			lastlogprobsstr = "Not Available";
+		}
+		msgbox(lastlogprobsstr,"Token Probability Viewer",true);
 	}
 
 	var worker_data_showonly = []; //only for table display, dont mix
@@ -8372,7 +8757,7 @@ Current version indicated by LITEVER below.
 	function togglepalmmodel()
 	{
 		let mdlname = document.getElementById("custom_palm_model").value;
-		if(mdlname=="gemini-1.5-pro-latest" || mdlname=="gemini-1.5-flash-latest" || mdlname=="gemini-1.5-pro-exp-0801" || mdlname=="gemini-1.5-pro-exp-0827")
+		if(mdlname=="gemini-1.5-pro-latest" || mdlname=="gemini-1.5-pro-001" || mdlname=="gemini-1.5-pro-002" || mdlname=="gemini-1.5-flash-latest" || mdlname=="gemini-1.5-pro-exp-0801" || mdlname=="gemini-1.5-pro-exp-0827")
 		{
 			document.getElementById("gemini_system_instruction").classList.remove("hidden");
 			if(localsettings.saved_palm_jailbreak=="")
@@ -8447,11 +8832,15 @@ Current version indicated by LITEVER below.
 		let desired_oai_ep = document.getElementById("custom_oai_endpoint").value.trim();
 		desired_oai_ep = transform_oai_ep(desired_oai_ep);
 
-		let oaiheaders = {
-			'Authorization': 'Bearer '+desired_oai_key,
+		let oaiheaders = {};
+		if(desired_oai_key!=""){
+			oaiheaders["Authorization"] = "Bearer " + desired_oai_key;
 		};
 		if (!desired_oai_ep.toLowerCase().includes("api.mistral.ai")) {
-			oaiheaders["x-api-key"] = desired_oai_key;
+			if(desired_oai_key!="")
+			{
+				oaiheaders["x-api-key"] = desired_oai_key;
+			}
 		}else{
 			if(desired_oai_key=="")
 			{
@@ -9883,6 +10272,7 @@ Current version indicated by LITEVER below.
 		document.getElementById("trimwhitespace").checked = localsettings.trimwhitespace;
 		document.getElementById("compressnewlines").checked = localsettings.compressnewlines;
 		document.getElementById("render_special_tags").checked = localsettings.render_special_tags;
+		document.getElementById("request_logprobs").checked = localsettings.request_logprobs;
 		document.getElementById("eos_ban_mode").value = localsettings.eos_ban_mode;
 		document.getElementById("persist_session").checked = localsettings.persist_session;
 		document.getElementById("opmode").value = localsettings.opmode;
@@ -10049,6 +10439,7 @@ Current version indicated by LITEVER below.
 		document.getElementById("img_allowhd").checked = localsettings.img_allowhd;
 		document.getElementById("img_crop").checked = localsettings.img_crop;
 		document.getElementById("img_autogen").checked = localsettings.img_autogen;
+		document.getElementById("img_gen_from_instruct").checked = localsettings.img_gen_from_instruct;
 		document.getElementById("save_images").checked = localsettings.save_images;
 		document.getElementById("save_remote_images").checked = localsettings.save_remote_images;
 		document.getElementById("img_cfgscale").value = localsettings.img_cfgscale;
@@ -10266,6 +10657,7 @@ Current version indicated by LITEVER below.
 		localsettings.trimwhitespace = (document.getElementById("trimwhitespace").checked ? true : false);
 		localsettings.compressnewlines = (document.getElementById("compressnewlines").checked ? true : false);
 		localsettings.render_special_tags = (document.getElementById("render_special_tags").checked ? true : false);
+		localsettings.request_logprobs = (document.getElementById("request_logprobs").checked ? true : false);
 		localsettings.eos_ban_mode = document.getElementById("eos_ban_mode").value;
 		localsettings.persist_session = (document.getElementById("persist_session").checked ? true : false);
 		if(document.getElementById("opmode").value==1)
@@ -10343,6 +10735,7 @@ Current version indicated by LITEVER below.
 		localsettings.img_crop = (document.getElementById("img_crop").checked ? true : false);
 		localsettings.img_allowhd = (document.getElementById("img_allowhd").checked ? true : false);
 		localsettings.img_autogen = (document.getElementById("img_autogen").checked ? true : false);
+		localsettings.img_gen_from_instruct = (document.getElementById("img_gen_from_instruct").checked ? true : false);
 		localsettings.save_images = (document.getElementById("save_images").checked ? true : false);
 		localsettings.save_remote_images = (document.getElementById("save_remote_images").checked ? true : false);
 		localsettings.prompt_for_savename = (document.getElementById("prompt_for_savename").checked ? true : false);
@@ -10513,15 +10906,12 @@ Current version indicated by LITEVER below.
 
 	function toggle_generate_images_mode(silent=false)
 	{
-		if(document.getElementById("generate_images_mode").value==0)
-		{
-			document.getElementById("generate_images_model_container").classList.add("hidden");
-			document.getElementById("generate_images_dalle_container").classList.add("hidden");
-			document.getElementById("generate_images_local_model_container").classList.add("hidden");
-		}else if(document.getElementById("generate_images_mode").value==1){
+		document.getElementById("generate_images_model_container").classList.add("hidden");
+		document.getElementById("generate_images_dalle_container").classList.add("hidden");
+		document.getElementById("generate_images_local_model_container").classList.add("hidden");
+		document.getElementById("generate_images_comfy_container").classList.add("hidden");
+		if(document.getElementById("generate_images_mode").value==1){
 			document.getElementById("generate_images_model_container").classList.remove("hidden");
-			document.getElementById("generate_images_dalle_container").classList.add("hidden");
-			document.getElementById("generate_images_local_model_container").classList.add("hidden");
 			if(!image_models_fetched)
 			{
 				//doing it this way will be more buggy,
@@ -10531,14 +10921,13 @@ Current version indicated by LITEVER below.
 				});
 			}
 		}else if(document.getElementById("generate_images_mode").value==2){
-			document.getElementById("generate_images_model_container").classList.add("hidden");
-			document.getElementById("generate_images_dalle_container").classList.add("hidden");
 			document.getElementById("generate_images_local_model_container").classList.remove("hidden");
 			connect_to_a1111(silent);
 		}else if(document.getElementById("generate_images_mode").value==3){
-			document.getElementById("generate_images_model_container").classList.add("hidden");
 			document.getElementById("generate_images_dalle_container").classList.remove("hidden");
-			document.getElementById("generate_images_local_model_container").classList.add("hidden");
+		}else if(document.getElementById("generate_images_mode").value==4){
+			document.getElementById("generate_images_comfy_container").classList.remove("hidden");
+			connect_to_comfyui(silent);
 		}
 	}
 
@@ -10952,6 +11341,7 @@ Current version indicated by LITEVER below.
 		gametext_arr = [];
 		redo_arr = [];
 		last_request_str = "No Requests Available";
+		last_response_obj = null;
 		retry_prev_text = [];
 		retry_preserve_last = false;
 		redo_prev_text = [];
@@ -11110,7 +11500,9 @@ Current version indicated by LITEVER below.
 				{
 					let escapedpat = escapeHtml(regexreplace_data[i].p);
 					let pat = new RegExp(escapedpat, "gm");
-					inputtxt = inputtxt.replace(pat, regexreplace_data[i].r);
+					let rep = regexreplace_data[i].r;
+					rep = unescapeRegexNewlines(rep);
+					inputtxt = inputtxt.replace(pat, rep);
 				}
 			}
 		}
@@ -11382,7 +11774,7 @@ Current version indicated by LITEVER below.
 		let imgid = "selfuploadimg"+(Math.floor(10000 + Math.random() * 90000)).toString();
 		let nimgtag = "[<|p|" + imgid + "|p|>]";
 		gametext_arr.push(nimgtag);
-		image_db[imgid] = { done: false, queue: "Generating", result: "", prompt:"", local:true };
+		image_db[imgid] = { done: false, queue: "Generating", result: "", prompt:"", poll_category:0 };
 		image_db[imgid].aspect = 0;
 		image_db[imgid].imsource = 1; //0=generated,1=uploaded
 		let imgres = localsettings.img_allowhd?HD_RES_PX:NO_HD_RES_PX;
@@ -11849,6 +12241,16 @@ Current version indicated by LITEVER below.
 	{
 		warn_on_quit = true;
 		let newgen = document.getElementById("input_text").value;
+		let img_gen_trigger_prompt = "";
+		let doNotGenerate = false;
+
+		//match the request for creating images in instruct modes
+		if(newgen!="" && localsettings.img_gen_from_instruct && localsettings.opmode == 4 && localsettings.generate_images_mode!=0 && !newgen.includes("\n\n") &&
+		newgen.match(/\b(?:draw me (?:a|an)\b)|(?:(?:draw|show me|generate|create|make|illustrate|visualize|produce|give me)(?:\s\w+){0,3}\s(?:image|picture|drawing|photo))/))
+		{
+			img_gen_trigger_prompt = newgen;
+			doNotGenerate = true;
+		}
 
 		//apply regex transforms
 		if(regexreplace_data && regexreplace_data.length>0)
@@ -11858,13 +12260,14 @@ Current version indicated by LITEVER below.
 				if(regexreplace_data[i].b && !(regexreplace_data[i].d) && regexreplace_data[i].p!="")
 				{
 					let pat = new RegExp(regexreplace_data[i].p, "gm");
-					newgen = newgen.replace(pat, regexreplace_data[i].r);
+					let rep = regexreplace_data[i].r;
+					rep = unescapeRegexNewlines(rep);
+					newgen = newgen.replace(pat, rep);
 				}
 			}
 		}
 
 		const user_input_empty = (newgen.trim()=="");
-		let doNotGenerate = false;
 		pending_context_postinjection = "";
 
 		if (!user_input_empty || gametext_arr.length > 0 || current_memory != "" || current_anote != "")
@@ -12457,6 +12860,14 @@ Current version indicated by LITEVER below.
 				pending_response_id = "";
 			}
 
+			if(img_gen_trigger_prompt!="")
+			{
+				let txt = "I'll try and create that image.";
+				gametext_arr.push(txt);
+				var sentence = img_gen_trigger_prompt.trim().substring(0, 380);
+				do_manual_gen_image(sentence);
+			}
+
 			render_gametext();
 		}
 		is_impersonate_user = false;
@@ -12610,6 +13021,7 @@ Current version indicated by LITEVER below.
 			submit_payload.params.smoothing_factor = localsettings.smoothing_factor;
 			submit_payload.params.banned_tokens = get_token_bans();
 			submit_payload.params.render_special = localsettings.render_special_tags;
+			submit_payload.params.logprobs = localsettings.request_logprobs;
 		}
 		if(custom_kobold_endpoint != "" && is_using_kcpp_with_dry() && localsettings.dry_multiplier > 0)
 		{
@@ -12678,6 +13090,7 @@ Current version indicated by LITEVER below.
 					streamchunk = ((pstreamamount != null && pstreamamount > 0) ? pstreamamount:8); //8 tokens per stream tick by default
 				}
 				last_request_str = JSON.stringify(submit_payload);
+				last_response_obj = null;
 				if (localsettings.tokenstreammode==2 && is_using_kcpp_with_sse()) {
 					let sub_endpt = apply_proxy_url(custom_kobold_endpoint + kobold_custom_gen_stream_endpoint);
 					kobold_api_stream_sse(sub_endpt, submit_payload);
@@ -12708,6 +13121,16 @@ Current version indicated by LITEVER below.
 					"model": custom_oai_model,
 					"temperature": submit_payload.params.temperature,
 					"top_p": submit_payload.params.top_p,
+				}
+				if(localsettings.request_logprobs && !targetep.toLowerCase().includes("api.mistral.ai"))
+				{
+					if(document.getElementById("useoaichatcompl").checked)
+					{
+						oai_payload.logprobs = true;
+						oai_payload.top_logprobs = 5;
+					}else{
+						oai_payload.logprobs = 5;
+					}
 				}
 				if(!targetep.toLowerCase().includes("api.mistral.ai"))
 				{
@@ -12800,6 +13223,7 @@ Current version indicated by LITEVER below.
 				}
 
 				last_request_str = JSON.stringify(oai_payload);
+				last_response_obj = null;
 				let oaiheaders = {
 					'Content-Type': 'application/json',
 					'Authorization': 'Bearer ' + custom_oai_key
@@ -12908,6 +13332,7 @@ Current version indicated by LITEVER below.
 
 
 				last_request_str = JSON.stringify(claude_payload);
+				last_response_obj = null;
 
 				let claudeheaders = {
 					'Content-Type': 'application/json',
@@ -13042,7 +13467,7 @@ Current version indicated by LITEVER below.
 					};
 
 					let sysinst = document.getElementById("gemini_system_instruction").value;
-					if(sysinst!="" && (mdlname=="gemini-1.5-pro-latest" || mdlname=="gemini-1.5-flash-latest" || mdlname=="gemini-1.5-pro-exp-0801"))
+					if(sysinst!="" && (mdlname=="gemini-1.5-pro-latest" || mdlname=="gemini-1.5-pro-001" || mdlname=="gemini-1.5-pro-002" || mdlname=="gemini-1.5-flash-latest" || mdlname=="gemini-1.5-pro-exp-0801"))
 					{
 						payload["systemInstruction"] = {
 							"role": "system",
@@ -13057,6 +13482,7 @@ Current version indicated by LITEVER below.
 
 				let targetep = urlbase + custom_palm_key;
 				last_request_str = JSON.stringify(payload);
+				last_response_obj = null;
 
 				fetch(targetep, {
 					method: 'POST',
@@ -13127,6 +13553,7 @@ Current version indicated by LITEVER below.
 				}
 
 				last_request_str = JSON.stringify(cohere_payload);
+				last_response_obj = null;
 				let cohere_headers = {
 					'Content-Type': 'application/json',
 					'Authorization': 'Bearer ' + custom_cohere_key
@@ -13227,6 +13654,7 @@ Current version indicated by LITEVER below.
 			}
 
 			last_request_str = JSON.stringify(submit_payload);
+			last_response_obj = null;
 
 			fetch(selectedhorde.submit_endpoint, {
 				method: 'POST', // or 'PUT'
@@ -13410,7 +13838,7 @@ Current version indicated by LITEVER below.
 					//for now, append the new image directly into the gtarr
 					let nimgtag = "[<|p|" + data.id + "|p|>]";
 					gametext_arr.push(nimgtag);
-					image_db[data.id] = { done: false, queue: "Starting", result: "", prompt:sentence, local:false };
+					image_db[data.id] = { done: false, queue: "Starting", result: "", prompt:sentence, poll_category:1 };
 					image_db[data.id].aspect = (iwidth>iheight?2:(iwidth<iheight?1:0));
 					image_db[data.id].imsource = 0; //0=generated,1=uploaded
 					console.log("New image queued " + nimgtag);
@@ -13432,7 +13860,7 @@ Current version indicated by LITEVER below.
 			let imgid = "A1111img"+(Math.floor(10000 + Math.random() * 90000)).toString();
 			let nimgtag = "[<|p|" + imgid + "|p|>]";
 			gametext_arr.push(nimgtag);
-			image_db[imgid] = { done: false, queue: "Generating", result: "", prompt:sentence, local:true };
+			image_db[imgid] = { done: false, queue: "Generating", result: "", prompt:sentence, poll_category:0 };
 			image_db[imgid].aspect = (iwidth>iheight?2:(iwidth<iheight?1:0));
 			image_db[imgid].imsource = 0; //0=generated,1=uploaded
 			generate_a1111_image(genimg_payload,(outputimg)=>{
@@ -13447,7 +13875,7 @@ Current version indicated by LITEVER below.
 					}, true, false, imgres,0.35,false);
 				}else{
 					image_db[imgid].queue = "Failed";
-					msgbox("Image Generation Failed!\n\nPlease make sure A1111 is running and properly configured!\nIn your local install of Automatic1111 WebUi, modify webui-user.bat and add these flags to enable API access:\n\nset COMMANDLINE_ARGS= --api --listen --cors-allow-origins=*\n");
+					msgbox("Image Generation Failed!\n\nPlease make sure KoboldCpp / Forge / A1111 is running and properly configured!\nIn your local install of Automatic1111 WebUi, modify webui-user.bat and add these flags to enable API access:\n\nset COMMANDLINE_ARGS= --api --listen --cors-allow-origins=*\n");
 				}
 			});
 		}
@@ -13462,7 +13890,7 @@ Current version indicated by LITEVER below.
 				let imgid = "DALLEimg"+(Math.floor(10000 + Math.random() * 90000)).toString();
 				let nimgtag = "[<|p|" + imgid + "|p|>]";
 				gametext_arr.push(nimgtag);
-				image_db[imgid] = { done: false, queue: "Generating", result: "", prompt:sentence, local:true };
+				image_db[imgid] = { done: false, queue: "Generating", result: "", prompt:sentence, poll_category:0 };
 				image_db[imgid].aspect = 0;
 				image_db[imgid].imsource = 0; //0=generated,1=uploaded
 				generate_dalle_image(genimg_payload,(outputimg)=>{
@@ -13481,6 +13909,12 @@ Current version indicated by LITEVER below.
 					}
 				});
 			}
+		}
+		else if(localsettings.generate_images_mode==4) //comfyui
+		{
+			let desired_model = document.getElementById("generate_images_comfy_model").value;
+			genimg_payload.models = [desired_model];
+			generate_comfy_image(genimg_payload);
 		}
 	}
 
@@ -13546,7 +13980,7 @@ Current version indicated by LITEVER below.
 			.then((data) => {
 				console.log('interrogate img result:', data);
 				if (data.id && data.id != "") {
-					interrogation_db[data.id] = { done: false, result: "", imghash:imghash, local:false };
+					interrogation_db[data.id] = { done: false, result: "", imghash:imghash, poll_category:1 };
 					console.log("New interrogate queued: " + data.id);
 				}
 				else {
@@ -13633,12 +14067,12 @@ Current version indicated by LITEVER below.
 			let togglebtn = `<select class="form-control" id="aivisionmode" style="display:inline;height:24px;width: 140px; padding: 2px; margin: 3px; font-size:12px;" onchange="toggle_ai_vision(\'`+imghash+`\')">
 								<option value="0">Disabled</option>
 								<option value="1">Interrogate (Horde)</option>
-								<option value="2">Interrogate (A1111)</option>
+								<option value="2">Interrogate (KCPP / Forge / A1111)</option>
 								<option value="3">Multimodal (LLaVA)</option>
 								<option value="4">OpenAI Vision (API)</option>
 							</select>`;
 			document.getElementById("zoomedimgdesc").innerHTML = `
-			AI Vision: `+visionstatus+` <span class="helpicon">?<span class="helptext">Allows the AI to see and react to this image. On KoboldCpp, LLaVA models can be used. Horde or Local A1111 use image interrogation if enabled. For OpenAI API, only works with Vision Models like Gpt4o.</span></span>
+			AI Vision: `+visionstatus+` <span class="helpicon">?<span class="helptext">Allows the AI to see and react to this image. On KoboldCpp, LLaVA models can be used. Horde or Local KoboldCpp / Forge / A1111 use image interrogation if enabled. For OpenAI API, only works with Vision Models like Gpt4o.</span></span>
 			`+togglebtn+`
 			<br><button type="button" class="btn btn-primary" style="width: 140px; padding: 2px; margin: 3px; font-size:12px;" onclick="show_orig_prompt()">View Original Prompt</button>
 			<button type="button" class="btn btn-primary" style="width: 110px; padding: 2px; margin: 3px; font-size:12px;" onclick="add_img2img()">Create Img2Img</button>
@@ -13818,7 +14252,9 @@ Current version indicated by LITEVER below.
 				if(regexreplace_data[i].p!="" && !(regexreplace_data[i].d))
 				{
 					let pat = new RegExp(regexreplace_data[i].p, "gm");
-					gentxt = gentxt.replace(pat, regexreplace_data[i].r);
+					let rep = regexreplace_data[i].r;
+					rep = unescapeRegexNewlines(rep);
+					gentxt = gentxt.replace(pat, rep);
 				}
 			}
 		}
@@ -14041,7 +14477,10 @@ Current version indicated by LITEVER below.
 		{
 			shownotify();
 		}
-		let lastreq = `<a href="#" onclick="show_last_req()">Last request</a> served by <a href="#" onclick="get_and_show_workers()">${genworker}</a> using <span class="color_darkgreen">${genmdl}</span>${(genkudos>0?` for ${genkudos} kudos`:``)} in ${getTimeTaken()} seconds.`;
+		let kcpp_has_logprobs = (last_response_obj!=null && last_response_obj.results && last_response_obj.results.length > 0 && last_response_obj.results[0].logprobs!=null);
+		let oai_has_logprobs = (last_response_obj!=null && last_response_obj.choices && last_response_obj.choices.length > 0 && last_response_obj.choices[0].logprobs!=null);
+		let lastresp = ` <a href="#" class="color_blueurl" onclick="show_last_logprobs()">(View Logprobs)</a>`;
+		let lastreq = `<a href="#" onclick="show_last_req()">Last request</a> served by <a href="#" onclick="get_and_show_workers()">${genworker}</a> using <span class="color_darkgreen">${genmdl}</span>${(genkudos>0?` for ${genkudos} kudos`:``)} in ${getTimeTaken()} seconds.${(last_response_obj!=null && (kcpp_has_logprobs || oai_has_logprobs)?lastresp:"")}`;
 		document.getElementById("lastreq1").innerHTML = lastreq;
 		document.getElementById("lastreq2").innerHTML = lastreq;
 		document.getElementById("lastreq3").innerHTML = lastreq;
@@ -14055,7 +14494,7 @@ Current version indicated by LITEVER below.
 		console.log("polling for pending interrogations " + imagecount);
 		for (let key in interrogation_db) {
 			let img = interrogation_db[key];
-			if (img.done == false && !img.local) {
+			if (img.done == false && img.poll_category==1) {
 				//call check
 				fetch(stablehorde_output_interrogate_endpoint + "/" + key)
 					.then(x => x.json())
@@ -14108,7 +14547,7 @@ Current version indicated by LITEVER below.
 		console.log("polling for pending images " + imagecount);
 		for (let key in image_db) {
 			let img = image_db[key];
-			if (img.done == false && !img.local) {
+			if (img.done == false && img.poll_category==1) {
 				//call check
 				fetch(stablehorde_poll_endpoint + "/" + key)
 					.then(x => x.json())
@@ -14157,6 +14596,52 @@ Current version indicated by LITEVER below.
 						msgbox("Image poll error: " + error);
 						delete image_db[key];
 					});
+			}
+			else if (img.done == false && img.poll_category==2)
+			{
+				//comfyui polling
+				fetch(localsettings.saved_comfy_url + comfy_history_endpoint + "/" + key, {
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+					}
+				})
+				.then(x => x.json())
+				.then(resp2 => {
+					console.log(resp2);
+					if(resp2 && resp2[key] && resp2[key].status && resp2[key].status.completed)
+					{
+						img.done = true;
+						let finalfilename = resp2[key].outputs["9"].images[0].filename;
+						//fetch final image
+						fetch(localsettings.saved_comfy_url + comfy_results_endpoint + finalfilename)
+						.then((response) => {
+							return response.blob(); // Convert the response into a Blob
+						})
+						.then((finalimg) => {
+							console.log('finalimg recv for ' + key);
+							const reader = new FileReader();
+							reader.onloadend = () => {
+								img.queue = 0;
+								let origImg = reader.result;
+								let imgres = localsettings.img_allowhd?HD_RES_PX:NO_HD_RES_PX;
+								compressImage(origImg, (newDataUri) => {
+									img.result = newDataUri;
+								}, true, false, imgres,0.35,false);
+							};
+							reader.readAsDataURL(finalimg);
+						})
+						.catch((error) => {
+							console.error('Error:', error);
+							msgbox("Image poll error: " + error);
+							delete image_db[key];
+						});
+					}
+				}).catch((error) => {
+					console.log("Generation Error: " + error);
+					delete image_db[key];
+					msgbox("Image Generation Failed!\n\nPlease make sure ComfyUI is running and properly configured!\n\nIt must be launched with the flag --enable-cors-header '*' to enable API access\n");
+				});
 			}
 		}
 
@@ -17765,7 +18250,7 @@ Current version indicated by LITEVER below.
 
 								<li class="nav-item hidden" id="topbtn_save_load">
 									<a id="tempfile" href="#" style="display:none;"></a>
-									<input type="file" id="loadfileinput" accept="text/json,application/json,image/png,image/webp,.kaistory,.webp,.png,.json,.txt,*.*,*" onchange="load_file(event)" style="display:none;">
+									<input type="file" id="loadfileinput" accept="text/json,application/json,image/png,image/webp,text/plain,*/*" onchange="load_file(event)" style="display:none;">
 									<a class="nav-link mainnav" href="#" onclick="closeTopNav();display_saveloadcontainer()">Save / Load</a>
 								</li>
 								<li class="nav-item hidden" id="topbtn_settings">
@@ -17850,7 +18335,6 @@ Current version indicated by LITEVER below.
 						<button type="button" class="btn btn-primary mainnav" id="btn_actretry2" onclick="btn_retry()">Retry</button>
 						<button type="button" class="btn btn-primary bg_green mainnav" id="btn_genimg2" onclick="add_img_btn_menu()">Add Img</button>
 						<button type="button" class="btn btn-primary mainnav" id="btn_editmode" onclick="btn_editmode()">Edit</button>
-
 					</div>
 				</div>
 
@@ -18211,7 +18695,9 @@ Current version indicated by LITEVER below.
 					<option value="claude-3-opus-20240229">claude-3-opus</option>
 					<option value="claude-3-sonnet-20240229">claude-3-sonnet</option>
 					<option value="claude-3-haiku-20240307">claude-3-haiku</option>
-					<option value="claude-3-5-sonnet-20240620">claude-3.5-sonnet</option>
+					<option value="claude-3-5-sonnet-20240620">claude-3-5-sonnet-20240620</option>
+					<option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
+					<option value="claude-3-5-sonnet-latest">claude-3-5-sonnet-latest</option>
 				</select>
 				<input type="checkbox" id="claudeaddversion" onchange="" checked>
 				<div class="box-label" title="Add endpoint version">Add Endpoint Version</div>
@@ -18231,6 +18717,8 @@ Current version indicated by LITEVER below.
 				Note that KoboldAI Lite takes no responsibility for your usage or consequences of this feature. Your API key is used directly with the Gemini API and is not transmitted to us.<br><br>
 				<select style="padding:4px;" class="form-control" id="custom_palm_model" onchange="togglepalmmodel()">
 					<option value="gemini-pro" selected="selected">gemini-pro</option>
+					<option value="gemini-1.5-pro-001">gemini-1.5-pro-001</option>
+					<option value="gemini-1.5-pro-002">gemini-1.5-pro-002</option>
 					<option value="gemini-1.5-pro-latest">gemini-1.5-pro-latest</option>
 					<option value="gemini-1.5-flash-latest">gemini-1.5-flash-latest</option>
 					<option value="gemini-1.5-pro-exp-0801">gemini-1.5-pro-exp-0801</option>
@@ -18832,13 +19320,14 @@ Current version indicated by LITEVER below.
 				<div id="settingsmenumedia" class="settingsmenu hidden" onchange="setting_tweaked()">
 					<div class="settingitem">
 						<div class="settinglabel">
-							<div class="justifyleft settingsmall">Generate Images <span class="helpicon">?<span class="helptext">Use the AI Horde or a local A1111 instance to insert AI generated images into your story.</span></span></div>
+							<div class="justifyleft settingsmall">Generate Images <span class="helpicon">?<span class="helptext">Use the AI Horde or a local KoboldCpp / Forge / A1111 instance to insert AI generated images into your story.</span></span></div>
 						</div>
 							<select title="Generate Images" class="form-control" id="generate_images_mode" style="height:20px;padding:0;margin:0px 0 0;" onchange="toggle_generate_images_mode(true)">
 								<option value="0">[Disabled]</option>
 								<option value="1">AI Horde</option>
-								<option value="2">Local A1111</option>
+								<option value="2">KCPP / Forge / A1111</option>
 								<option value="3">OpenAI DALL-E</option>
+								<option value="4">ComfyUI</option>
 							</select>
 							<div id="generate_images_model_container" class="hidden">
 								<select class="form-control" id="generate_images_model" style="font-size: 12px;height:20px;padding:2px;margin:0px 0 0;" onblur="validate_sd_model()" title="Stable Diffusion Model Selection">
@@ -18856,9 +19345,15 @@ Current version indicated by LITEVER below.
 							</select>
 							<button type="button" class="btn btn-primary" onclick="set_a1111_endpoint()" style="height: 20px; padding: 0px 2px; margin: 0px 0px 0px 3px;">⚙️</button>
 							<div class="settinglabel">
-								<div class="justifyleft settingsmall"  title="Save images remotely on A1111 host (caution)">Save In A1111 </div>
+								<div class="justifyleft settingsmall"  title="Save images remotely on A1111/Forge host (caution)">Save In A1111/Forge </div>
 							   <input type="checkbox" id="save_remote_images" style="margin:0px 0 0;">
 							</div>
+							</div>
+							<div id="generate_images_comfy_container" class="settinglabel hidden">
+								<select title="Select Image Model" class="form-control" id="generate_images_comfy_model" style="height:20px;padding:0;margin:0px 0 0; width:calc(100% - 30px)">
+									<option value="">[None]</option>
+								</select>
+								<button type="button" class="btn btn-primary" onclick="set_comfy_endpoint()" style="height: 20px; padding: 0px 2px; margin: 0px 0px 0px 3px;">⚙️</button>
 							</div>
 							<div id="generate_images_dalle_container" class="settinglabel hidden">
 								<table width="100%"><tr>
@@ -18871,6 +19366,10 @@ Current version indicated by LITEVER below.
 							<div id="genimgopt" class="">
 								<table>
 								<tr><td>
+								<div class="settinglabel">
+									<div class="justifyleft settingsmall"  title="Parse user input text in instruct mode, and trigger image generation if requested">Detect ImgGen Instructions </div>
+									<input title="Detect ImgGen Instructions" type="checkbox" id="img_gen_from_instruct" style="margin:0px 0 0;">
+								</div>
 								<div class="settinglabel">
 									<div class="justifyleft settingsmall"  title="Automatically generates images periodically as you write">Autogenerate </div>
 								   <input title="Autogenerate Images" type="checkbox" id="img_autogen" style="margin:0px 0 0;">
@@ -19057,6 +19556,11 @@ Current version indicated by LITEVER below.
 							<div class="justifyleft settingsmall">Render Sp.Tags <span class="helpicon">?<span
 								class="helptext">If enabled, renders special tags like EOS and padding tokens. Not recommended.</span></span></div>
 						   <input title="Render Special Tags" type="checkbox" id="render_special_tags" style="margin:0px 0px 0px auto;">
+						</div>
+						<div class="settinglabel">
+							<div class="justifyleft settingsmall">Request Logprobs <span class="helpicon">?<span
+								class="helptext">If enabled, request top 5 alternative token log-probabilities for each generated token. Incurs an overhead.</span></span></div>
+						   <input title="Request Logprobs" type="checkbox" id="request_logprobs" style="margin:0px 0px 0px auto;">
 						</div>
 					</div>
 

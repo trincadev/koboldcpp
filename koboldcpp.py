@@ -19,14 +19,17 @@ from datetime import datetime, timezone
 
 # constants
 sampler_order_max = 7
-stop_token_max = 32
-ban_token_max = 48
 tensor_split_max = 16
-logit_bias_max = 32
-dry_seq_break_max = 24
 images_max = 4
 bias_min_value = -100.0
 bias_max_value = 100.0
+logprobs_max = 5
+
+# abuse prevention
+stop_token_max = 256
+ban_token_max = 512
+logit_bias_max = 512
+dry_seq_break_max = 128
 
 # global vars
 handle = None
@@ -42,7 +45,7 @@ maxhordelen = 400
 modelbusy = threading.Lock()
 requestsinqueue = 0
 defaultport = 5001
-KcppVersion = "1.76"
+KcppVersion = "1.77"
 showdebug = True
 guimode = False
 showsamplerwarning = True
@@ -99,6 +102,17 @@ class token_count_outputs(ctypes.Structure):
     _fields_ = [("count", ctypes.c_int),
                 ("ids", ctypes.POINTER(ctypes.c_int))]
 
+# returns top 5 logprobs per token
+class logprob_item(ctypes.Structure):
+     _fields_ = [("option_count", ctypes.c_int),
+                ("selected_token", ctypes.c_char_p),
+                ("selected_logprob", ctypes.c_float),
+                ("tokens", ctypes.c_char_p * logprobs_max),
+                ("logprobs", ctypes.POINTER(ctypes.c_float))]
+class last_logprobs_outputs(ctypes.Structure):
+    _fields_ = [("count", ctypes.c_int),
+                ("logprob_items", ctypes.POINTER(logprob_item))]
+
 class load_model_inputs(ctypes.Structure):
     _fields_ = [("threads", ctypes.c_int),
                 ("blasthreads", ctypes.c_int),
@@ -150,11 +164,6 @@ class generation_inputs(ctypes.Structure):
                 ("mirostat", ctypes.c_int),
                 ("mirostat_tau", ctypes.c_float),
                 ("mirostat_eta", ctypes.c_float),
-                ("dry_multiplier", ctypes.c_float),
-                ("dry_base", ctypes.c_float),
-                ("dry_allowed_length", ctypes.c_int),
-                ("dry_penalty_last_n", ctypes.c_int),
-                ("dry_sequence_breakers", ctypes.c_char_p * dry_seq_break_max),
                 ("xtc_threshold", ctypes.c_float),
                 ("xtc_probability", ctypes.c_float),
                 ("sampler_order", ctypes.c_int * sampler_order_max),
@@ -162,7 +171,6 @@ class generation_inputs(ctypes.Structure):
                 ("allow_eos_token", ctypes.c_bool),
                 ("bypass_eos_token", ctypes.c_bool),
                 ("render_special", ctypes.c_bool),
-                ("stop_sequence", ctypes.c_char_p * stop_token_max),
                 ("stream_sse", ctypes.c_bool),
                 ("grammar", ctypes.c_char_p),
                 ("grammar_retain_state", ctypes.c_bool),
@@ -170,12 +178,24 @@ class generation_inputs(ctypes.Structure):
                 ("dynatemp_range", ctypes.c_float),
                 ("dynatemp_exponent", ctypes.c_float),
                 ("smoothing_factor", ctypes.c_float),
-                ("logit_biases", logit_bias * logit_bias_max),
-                ("banned_tokens", ctypes.c_char_p * ban_token_max)]
+                ("dry_multiplier", ctypes.c_float),
+                ("dry_base", ctypes.c_float),
+                ("dry_allowed_length", ctypes.c_int),
+                ("dry_penalty_last_n", ctypes.c_int),
+                ("dry_sequence_breakers_len", ctypes.c_int),
+                ("dry_sequence_breakers", ctypes.POINTER(ctypes.c_char_p)),
+                ("stop_sequence_len", ctypes.c_int),
+                ("stop_sequence", ctypes.POINTER(ctypes.c_char_p)),
+                ("logit_biases_len", ctypes.c_int),
+                ("logit_biases", ctypes.POINTER(logit_bias)),
+                ("banned_tokens_len", ctypes.c_int),
+                ("banned_tokens", ctypes.POINTER(ctypes.c_char_p))]
 
 class generation_outputs(ctypes.Structure):
     _fields_ = [("status", ctypes.c_int),
                 ("stopreason", ctypes.c_int),
+                ("prompt_tokens", ctypes.c_int),
+                ("completion_tokens", ctypes.c_int),
                 ("text", ctypes.c_char_p)]
 
 class sd_load_model_inputs(ctypes.Structure):
@@ -439,6 +459,7 @@ def init_library():
     handle.whisper_load_model.restype = ctypes.c_bool
     handle.whisper_generate.argtypes = [whisper_generation_inputs]
     handle.whisper_generate.restype = whisper_generation_outputs
+    handle.last_logprobs.restype = last_logprobs_outputs
 
 def set_backend_props(inputs):
     clblastids = 0
@@ -581,13 +602,22 @@ def bring_terminal_to_foreground():
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 9)
         ctypes.windll.user32.SetForegroundWindow(ctypes.windll.kernel32.GetConsoleWindow())
 
-def string_contains_sequence_substring(inputstr,sequences):
-    if inputstr.strip()=="":
+def string_has_overlap(str_a, str_b, maxcheck):
+    max_overlap = min(maxcheck, len(str_a), len(str_b))
+    for i in range(1, max_overlap + 1):
+        if str_a[-i:] == str_b[:i]:
+            return True
+    return False
+
+def string_contains_or_overlaps_sequence_substring(inputstr, sequences):
+    if inputstr=="":
         return False
     for s in sequences:
         if s.strip()=="":
             continue
         if s.strip() in inputstr.strip() or inputstr.strip() in s.strip():
+            return True
+        if string_has_overlap(inputstr, s, 10):
             return True
     return False
 
@@ -872,7 +902,7 @@ def generate(genparams, is_quiet=False, stream_flag=False):
     memory = genparams.get('memory', "")
     images = genparams.get('images', [])
     max_context_length = genparams.get('max_context_length', maxctx)
-    max_length = genparams.get('max_length', 180)
+    max_length = genparams.get('max_length', 200)
     temperature = genparams.get('temperature', 0.7)
     top_k = genparams.get('top_k', 100)
     top_a = genparams.get('top_a', 0.0)
@@ -982,11 +1012,16 @@ def generate(genparams, is_quiet=False, stream_flag=False):
         except ValueError as e:
             print(f"ERROR: dry_sequence_breakers must be an array of strings or a json encoded array of strings. Could not parse '{dry_sequence_breakers}': " + str(e))
             dry_sequence_breakers = []
-    for n in range(dry_seq_break_max):
-        if dry_multiplier > 0 and n < len(dry_sequence_breakers):
-            inputs.dry_sequence_breakers[n] = dry_sequence_breakers[n].encode("UTF-8")
-        else:
-            inputs.dry_sequence_breakers[n] = "".encode("UTF-8")
+
+    if dry_multiplier <= 0 or dry_sequence_breakers is None: # prevent explicitly set to None, retain old behavior
+        dry_sequence_breakers = []
+
+    dry_sequence_breakers = dry_sequence_breakers[:dry_seq_break_max]
+    inputs.dry_sequence_breakers_len = len(dry_sequence_breakers)
+    inputs.dry_sequence_breakers = (ctypes.c_char_p * inputs.dry_sequence_breakers_len)()
+
+    for n, breaker in enumerate(dry_sequence_breakers):
+        inputs.dry_sequence_breakers[n] = breaker.encode("UTF-8")
 
     if sampler_order and 0 < len(sampler_order) <= sampler_order_max:
         try:
@@ -1000,13 +1035,18 @@ def generate(genparams, is_quiet=False, stream_flag=False):
         except TypeError as e:
             print("ERROR: sampler_order must be a list of integers: " + str(e))
     inputs.seed = seed
-    for n in range(stop_token_max):
-        if not stop_sequence or n >= len(stop_sequence):
-            inputs.stop_sequence[n] = "".encode("UTF-8")
-        elif stop_sequence[n]==None:
-            inputs.stop_sequence[n] = "".encode("UTF-8")
+
+    if stop_sequence is None:
+        stop_sequence = []
+    stop_sequence = stop_sequence[:stop_token_max]
+    inputs.stop_sequence_len = len(stop_sequence)
+    inputs.stop_sequence = (ctypes.c_char_p * inputs.stop_sequence_len)()
+
+    for n, sequence in enumerate(stop_sequence):
+        if sequence:
+            inputs.stop_sequence[n] = sequence.encode("UTF-8")
         else:
-            inputs.stop_sequence[n] = stop_sequence[n].encode("UTF-8")
+            inputs.stop_sequence[n] = "".encode("UTF-8")
 
     bias_list = []
     try:
@@ -1015,25 +1055,27 @@ def generate(genparams, is_quiet=False, stream_flag=False):
     except Exception as ex:
         print(f"Logit bias dictionary is invalid: {ex}")
 
-    for n in range(logit_bias_max):
-        if n >= len(bias_list):
+    bias_list = bias_list[:logit_bias_max]
+    inputs.logit_biases_len = len(bias_list)
+    inputs.logit_biases = (logit_bias * inputs.logit_biases_len)()
+    for n, lb in enumerate(bias_list):
+        try:
+            t_id = int(lb['key'])
+            bias = float(lb['value'])
+            t_id = -1 if t_id < 0 else t_id
+            bias = (bias_max_value if bias > bias_max_value else (bias_min_value if bias < bias_min_value else bias))
+            inputs.logit_biases[n] = logit_bias(t_id, bias)
+        except Exception as ex:
             inputs.logit_biases[n] = logit_bias(-1, 0.0)
-        else:
-            try:
-                t_id = int(bias_list[n]['key'])
-                bias = float(bias_list[n]['value'])
-                t_id = -1 if t_id < 0 else t_id
-                bias = (bias_max_value if bias > bias_max_value else (bias_min_value if bias < bias_min_value else bias))
-                inputs.logit_biases[n] = logit_bias(t_id, bias)
-            except Exception as ex:
-                inputs.logit_biases[n] = logit_bias(-1, 0.0)
-                print(f"Skipped unparsable logit bias:{ex}")
+            print(f"Skipped unparsable logit bias:{ex}")
 
-    for n in range(ban_token_max):
-        if not banned_tokens or n >= len(banned_tokens):
-            inputs.banned_tokens[n] = "".encode("UTF-8")
-        else:
-            inputs.banned_tokens[n] = banned_tokens[n].encode("UTF-8")
+    if banned_tokens is None:
+        banned_tokens = []
+    banned_tokens = banned_tokens[:ban_token_max]
+    inputs.banned_tokens_len = len(banned_tokens)
+    inputs.banned_tokens = (ctypes.c_char_p * inputs.banned_tokens_len)()
+    for n, tok in enumerate(banned_tokens):
+        inputs.banned_tokens[n] = tok.encode("UTF-8")
 
     currentusergenkey = genkey
     totalgens += 1
@@ -1042,7 +1084,7 @@ def generate(genparams, is_quiet=False, stream_flag=False):
     if pendingabortkey!="" and pendingabortkey==genkey:
         print(f"\nDeferred Abort for GenKey: {pendingabortkey}")
         pendingabortkey = ""
-        return {"text":"","status":-1,"stopreason":-1}
+        return {"text":"","status":-1,"stopreason":-1, "prompt_tokens":0, "completion_tokens": 0}
     else:
         ret = handle.generate(inputs)
         outstr = ""
@@ -1053,7 +1095,7 @@ def generate(genparams, is_quiet=False, stream_flag=False):
                 sindex = outstr.find(trim_str)
                 if sindex != -1 and trim_str!="":
                     outstr = outstr[:sindex]
-        return {"text":outstr,"status":ret.status,"stopreason":ret.stopreason}
+        return {"text":outstr,"status":ret.status,"stopreason":ret.stopreason,"prompt_tokens":ret.prompt_tokens, "completion_tokens": ret.completion_tokens}
 
 
 def sd_load_model(model_filename,vae_filename,lora_filename):
@@ -1216,6 +1258,41 @@ def extract_json_from_string(input_string):
         pass
     return []
 
+def parse_last_logprobs(lastlogprobs):
+    if not lastlogprobs:
+        return None
+    logprobsdict = {}
+    logprobsdict['content'] = []
+    logprobsdict['tokens'] = []
+    logprobsdict['token_logprobs'] = []
+    logprobsdict['top_logprobs'] = []
+    logprobsdict['text_offset'] = []
+    text_offset_counter = 0
+    for i in range(lastlogprobs.count):
+        lp_content_item = {}
+        logprob_item = lastlogprobs.logprob_items[i]
+        toptoken = ctypes.string_at(logprob_item.selected_token).decode("UTF-8","ignore")
+        logprobsdict['tokens'].append(toptoken)
+        lp_content_item['token'] = toptoken
+        logprobsdict['token_logprobs'].append(logprob_item.selected_logprob)
+        lp_content_item['logprob'] = logprob_item.selected_logprob
+        lp_content_item['bytes'] = list(toptoken.encode('utf-8'))
+        lp_content_item['top_logprobs'] = []
+        logprobsdict['text_offset'].append(text_offset_counter)
+        text_offset_counter += len(toptoken)
+        tops = {}
+        for j in range(min(logprob_item.option_count,logprobs_max)):
+            tl_item = {}
+            tl_item['logprob'] = logprob_item.logprobs[j]
+            tokstr = ctypes.string_at(logprob_item.tokens[j]).decode("UTF-8","ignore")
+            tops[tokstr] = logprob_item.logprobs[j]
+            tl_item['token'] = tokstr
+            tl_item['bytes'] = list(tokstr.encode('utf-8'))
+            lp_content_item['top_logprobs'].append(tl_item)
+        logprobsdict['top_logprobs'].append(tops)
+        logprobsdict['content'].append(lp_content_item)
+    return logprobsdict
+
 def transform_genparams(genparams, api_format):
     global chatcompl_adapter
     #api format 1=basic,2=kai,3=oai,4=oai-chat,5=interrogate
@@ -1231,13 +1308,14 @@ def transform_genparams(genparams, api_format):
     if api_format==1:
         genparams["prompt"] = genparams.get('text', "")
         genparams["top_k"] = int(genparams.get('top_k', 120))
-        genparams["max_length"] = genparams.get('max', 180)
+        genparams["max_length"] = genparams.get('max', 200)
 
     elif api_format==2:
         pass
 
     elif api_format==3 or api_format==4:
-        genparams["max_length"] = genparams.get('max_tokens', (400 if api_format==4 else 180))
+        default_max_tok = (400 if api_format==4 else 200)
+        genparams["max_length"] = genparams.get('max_tokens', genparams.get('max_completion_tokens', default_max_tok))
         presence_penalty = genparams.get('presence_penalty', genparams.get('frequency_penalty', 0.0))
         genparams["presence_penalty"] = presence_penalty
         # openai allows either a string or a list as a stop sequence
@@ -1397,10 +1475,13 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
                         detected_upload_filename = re.findall(r'Content-Disposition.*name="file"; filename="(.*)"', fpart.decode('utf-8',errors='ignore'))
                         if detected_upload_filename and len(detected_upload_filename)>0:
                             utfprint(f"Detected uploaded file: {detected_upload_filename[0]}")
-                            file_data = fpart.split(b'\r\n\r\n')[1].rsplit(b'\r\n', 1)[0]
-                            file_data_base64 = base64.b64encode(file_data).decode('utf-8',"ignore")
-                            base64_string = f"data:audio/wav;base64,{file_data_base64}"
-                            return base64_string
+                            file_content_start = fpart.find(b'\r\n\r\n') + 4  # Position after headers
+                            file_content_end = fpart.rfind(b'\r\n')  # Ending boundary
+                            if file_content_start != -1 and file_content_end != -1:
+                                file_data = fpart[file_content_start:file_content_end]
+                                file_data_base64 = base64.b64encode(file_data).decode('utf-8',"ignore")
+                                base64_string = f"data:audio/wav;base64,{file_data_base64}"
+                                return base64_string
             print("Uploaded file not found.")
             return None
         except Exception as e:
@@ -1421,7 +1502,7 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
 
             return generate(genparams=genparams,is_quiet=is_quiet,stream_flag=stream_flag)
 
-        genout = {"text": "", "status": -1, "stopreason": -1}
+        genout = {"text": "", "status": -1, "stopreason": -1, "prompt_tokens":0, "completion_tokens": 0}
         if stream_flag:
             loop = asyncio.get_event_loop()
             executor = ThreadPoolExecutor()
@@ -1430,7 +1511,15 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
             genout = run_blocking()
 
         recvtxt = genout['text']
+        prompttokens = genout['prompt_tokens']
+        comptokens = genout['completion_tokens']
         currfinishreason = ("length" if (genout['stopreason'] != 1) else "stop")
+
+        # grab logprobs if not streaming
+        logprobsdict = None
+        if not stream_flag and ("logprobs" in genparams and genparams["logprobs"]):
+            lastlogprobs = handle.last_logprobs()
+            logprobsdict = parse_last_logprobs(lastlogprobs)
 
         # flag instance as non-idle for a while
         washordereq = genparams.get('genkey', '').startswith('HORDEREQ_')
@@ -1445,8 +1534,8 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
             res = {"data": {"seqs": [recvtxt]}}
         elif api_format == 3:
             res = {"id": "cmpl-A1", "object": "text_completion", "created": int(time.time()), "model": friendlymodelname,
-                   "usage": {"prompt_tokens": 100, "completion_tokens": 100, "total_tokens": 200},
-                   "choices": [{"text": recvtxt, "index": 0, "finish_reason": currfinishreason}]}
+                   "usage": {"prompt_tokens": prompttokens, "completion_tokens": comptokens, "total_tokens": (prompttokens+comptokens)},
+                   "choices": [{"text": recvtxt, "index": 0, "finish_reason": currfinishreason, "logprobs":logprobsdict}]}
         elif api_format == 4:
             using_openai_tools = genparams.get('using_openai_tools', False)
             tool_calls = []
@@ -1455,12 +1544,12 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if tool_calls and len(tool_calls)>0:
                     recvtxt = None
             res = {"id": "chatcmpl-A1", "object": "chat.completion", "created": int(time.time()), "model": friendlymodelname,
-                   "usage": {"prompt_tokens": 100, "completion_tokens": 100, "total_tokens": 200},
-                   "choices": [{"index": 0, "message": {"role": "assistant", "content": recvtxt, "tool_calls": tool_calls}, "finish_reason": currfinishreason}]}
+                   "usage": {"prompt_tokens": prompttokens, "completion_tokens": comptokens, "total_tokens": (prompttokens+comptokens)},
+                   "choices": [{"index": 0, "message": {"role": "assistant", "content": recvtxt, "tool_calls": tool_calls}, "finish_reason": currfinishreason, "logprobs":logprobsdict}]}
         elif api_format == 5:
             res = {"caption": end_trim_to_sentence(recvtxt)}
         else:
-            res = {"results": [{"text": recvtxt, "finish_reason": currfinishreason}]}
+            res = {"results": [{"text": recvtxt, "finish_reason": currfinishreason, "logprobs":logprobsdict, "prompt_tokens": prompttokens, "completion_tokens": comptokens}]}
 
         try:
             return res
@@ -1482,6 +1571,7 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
     async def handle_sse_stream(self, genparams, api_format):
         global friendlymodelname, currfinishreason
         self.send_response(200)
+        self.send_header("X-Accel-Buffering", "no")
         self.send_header("cache-control", "no-cache")
         self.send_header("connection", "keep-alive")
         self.end_headers(content_type='text/event-stream')
@@ -1517,7 +1607,7 @@ class ServerRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if tokenStr!="" or streamDone:
                     sseq = genparams.get('stop_sequence', [])
                     trimstop = genparams.get('trim_stop', False)
-                    if trimstop and not streamDone and string_contains_sequence_substring(tokenStr,sseq):
+                    if trimstop and not streamDone and string_contains_or_overlaps_sequence_substring(tokenStr,sseq):
                         tokenReserve += tokenStr
                         await asyncio.sleep(async_sleep_short) #if a stop sequence could trigger soon, do not send output
                     else:
@@ -1776,6 +1866,15 @@ Enter Prompt:<br>
                 pendtxtStr = ctypes.string_at(pendtxt).decode("UTF-8","ignore")
             response_body = (json.dumps({"results": [{"text": pendtxtStr}]}).encode())
 
+        elif self.path.endswith('/api/extra/last_logprobs'):
+            if not self.secure_endpoint():
+                return
+            logprobsdict = None
+            if requestsinqueue==0 and totalgens>0 and currentusergenkey=="":
+                lastlogprobs = handle.last_logprobs()
+                logprobsdict = parse_last_logprobs(lastlogprobs)
+            response_body = (json.dumps({"logprobs":logprobsdict}).encode())
+
         elif self.path.endswith('/v1/models'):
             response_body = (json.dumps({"object":"list","data":[{"id":friendlymodelname,"object":"model","created":int(time.time()),"owned_by":"koboldcpp","permission":[],"root":"koboldcpp"}]}).encode())
 
@@ -1920,6 +2019,24 @@ Enter Prompt:<br>
                     pendtxtStr = ctypes.string_at(pendtxt).decode("UTF-8","ignore")
             response_body = (json.dumps({"results": [{"text": pendtxtStr}]}).encode())
 
+        elif self.path.endswith('/api/extra/last_logprobs'):
+            if not self.secure_endpoint():
+                return
+            logprobsdict = None
+            multiuserkey = ""
+            try:
+                tempbody = json.loads(body)
+                if isinstance(tempbody, dict):
+                    multiuserkey = tempbody.get('genkey', "")
+            except Exception as e:
+                multiuserkey = ""
+
+            if totalgens>0:
+                if (multiuserkey=="" and multiuserkey==currentusergenkey and requestsinqueue==0) or (multiuserkey!="" and multiuserkey==currentusergenkey): #avoid leaking prompts in multiuser
+                    lastlogprobs = handle.last_logprobs()
+                    logprobsdict = parse_last_logprobs(lastlogprobs)
+            response_body = (json.dumps({"logprobs":logprobsdict}).encode())
+
         if response_body is not None:
             self.send_response(response_code)
             self.send_header('content-length', str(len(response_body)))
@@ -1929,6 +2046,8 @@ Enter Prompt:<br>
 
         reqblocking = False
         muint = int(args.multiuser)
+        if muint<=0 and ((args.whispermodel and args.whispermodel!="") or (args.sdmodel and args.sdmodel!="")):
+            muint = 2 # this prevents errors when using voice/img together with text
         multiuserlimit = ((muint-1) if muint > 1 else 6)
         #backwards compatibility for up to 7 concurrent requests, use default limit of 7 if multiuser set to 1
         if muint > 0 and requestsinqueue < multiuserlimit:
@@ -2231,8 +2350,8 @@ def show_gui():
 
     import customtkinter as ctk
     nextstate = 0 #0=exit, 1=launch
-    original_windowwidth = 550
-    original_windowheight = 550
+    original_windowwidth = 580
+    original_windowheight = 560
     windowwidth = original_windowwidth
     windowheight = original_windowheight
     ctk.set_appearance_mode("dark")
@@ -2681,9 +2800,12 @@ def show_gui():
             tensor_split_entry.grid_remove()
             splitmode_box.grid_remove()
 
-        if index == "Use Vulkan":
+        if index == "Use Vulkan" or index == "Use Vulkan (Old CPU)":
             tensor_split_label.grid(row=8, column=0, padx = 8, pady=1, stick="nw")
             tensor_split_entry.grid(row=8, column=1, padx=8, pady=1, stick="nw")
+            quick_use_flashattn.grid_remove()
+        else:
+            quick_use_flashattn.grid(row=22, column=1, padx=8, pady=1,  stick="nw")
 
         if index == "Use Vulkan" or index == "Use Vulkan (Old CPU)" or index == "Use CLBlast" or index == "Use CLBlast (Old CPU)" or index == "Use CuBLAS" or index == "Use hipBLAS (ROCm)":
             gpu_layers_label.grid(row=6, column=0, padx = 8, pady=1, stick="nw")
@@ -2733,12 +2855,13 @@ def show_gui():
         "Disable MMAP": [disablemmap,  "Avoids using mmap to load models if enabled"],
         "Use ContextShift": [contextshift, "Uses Context Shifting to reduce reprocessing.\nRecommended. Check the wiki for more info."],
         "Remote Tunnel": [remotetunnel,  "Creates a trycloudflare tunnel.\nAllows you to access koboldcpp from other devices over an internet URL."],
-        "Use FlashAttention": [flashattention, "Enable flash attention for GGUF models."],
         "Quiet Mode": [quietmode, "Prevents all generation related terminal output from being displayed."]
     }
 
     for idx, (name, properties) in enumerate(quick_boxes.items()):
         makecheckbox(quick_tab, name, properties[0], int(idx/2) + 20, idx % 2, tooltiptxt=properties[1])
+
+    quick_use_flashattn = makecheckbox(quick_tab, "Use FlashAttention", flashattention, 22, 1, tooltiptxt="Enable flash attention for GGUF models.")
 
     # context size
     makeslider(quick_tab, "Context Size:", contextsize_text, context_var, 0, len(contextsize_text)-1, 30, width=280, set=5,tooltip="What is the maximum context size to support. Model specific. You cannot exceed it.\nLarger contexts require more memory, and not all models support it.")
@@ -3312,6 +3435,12 @@ def show_gui():
             wb.open("https://github.com/LostRuins/koboldcpp/wiki")
         except:
             print("Cannot launch help in browser.")
+    def display_help_models():
+        try:
+            import webbrowser as wb
+            wb.open("https://github.com/LostRuins/koboldcpp/wiki#what-models-does-koboldcpp-support-what-architectures-are-supported")
+        except:
+            print("Cannot launch help in browser.")
     def display_updates():
         try:
             import webbrowser as wb
@@ -3349,7 +3478,16 @@ def show_gui():
 
         if not args.model_param and not args.sdmodel and not args.whispermodel and not args.nomodel:
             exitcounter = 999
-            exit_with_error(2,"No text or image model file was selected. Exiting.")
+            print("")
+            time.sleep(0.5)
+            if guimode:
+                givehelp = show_gui_yesnobox("No Model Loaded","No text or image model file was selected. Cannot continue.\n\nDo you want help finding a GGUF model?")
+                if givehelp == 'yes':
+                    display_help_models()
+            else:
+                print("No text or image model file was selected. Cannot continue.", flush=True)
+            time.sleep(2)
+            sys.exit(2)
 
 def show_gui_msgbox(title,message):
     print(title + ": " + message, flush=True)
@@ -3362,6 +3500,21 @@ def show_gui_msgbox(title,message):
         root.withdraw()
         root.quit()
     except Exception as ex2:
+        pass
+
+def show_gui_yesnobox(title,message):
+    print(title + ": " + message, flush=True)
+    try:
+        from tkinter import messagebox
+        import tkinter as tk
+        root = tk.Tk()
+        root.attributes("-alpha", 0)
+        result = messagebox.askquestion(title=title, message=message,icon='error')
+        root.withdraw()
+        root.quit()
+        return result
+    except Exception as ex2:
+        return False
         pass
 
 def print_with_time(txt):
@@ -4058,7 +4211,7 @@ def main(launch_args,start_server=True):
                 fetch_gpu_properties(False,True,True)
                 pass
             if args.gpulayers==-1:
-                if MaxMemory[0] > 0 and (not args.usecpu) and (args.usecublas or (args.usevulkan is not None) or args.useclblast or sys.platform=="darwin"):
+                if MaxMemory[0] > 0 and (not args.usecpu) and ((args.usecublas is not None) or (args.usevulkan is not None) or (args.useclblast is not None) or sys.platform=="darwin"):
                     extract_modelfile_params(args.model_param,args.sdmodel,args.whispermodel,args.mmproj)
                     layeramt = autoset_gpu_layers(args.contextsize,args.sdquant,args.blasbatchsize)
                     print(f"Auto Recommended GPU Layers: {layeramt}")

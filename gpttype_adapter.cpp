@@ -42,7 +42,7 @@
 #include "examples/llava/llava.h"
 
 //const
-const int extra_context_handle_fragmentation = 80;
+const int extra_context_handle_fragmentation = 120;
 const int LLAVA_TOKEN_IDENTIFIER_A = -998; //alternate between both, changing when image changes
 const int LLAVA_TOKEN_IDENTIFIER_B = -999;
 
@@ -114,7 +114,7 @@ static std::vector<std::string> banned_phrases;
 static std::unordered_multimap<gpt_vocab::id, std::vector<gpt_vocab::id>> dry_sequence_breakers; // Multi-mapping from first token of sequence to tail of sequence (tail is empty for a single token)
 static std::vector<int> dry_repeat_count; // Indexed as last_n_tokens
 static std::unordered_map<gpt_vocab::id, int> dry_max_token_repeat;
-static std::vector<llama_token_data> top_picks;
+static std::vector<TopPicksData> top_picks_history;
 static int remaining_tokens = 0;
 static int stopper_unused_tokens = 0;
 static std::mutex concat_output_mtx;
@@ -449,6 +449,15 @@ void ContextRewind(std::vector<int> &embd, std::vector<int> &current_context_tok
         last_n_tokens.resize(last_n_tokens.size() - amount_rewind);
     }
 
+    if(amount_rewind >= top_picks_history.size())
+    {
+        top_picks_history.clear();
+    }
+    else
+    {
+        top_picks_history.resize(top_picks_history.size() - amount_rewind);
+    }
+
     if (amount_rewind >= current_context_tokens.size())
     {
         current_context_tokens.clear();
@@ -587,7 +596,8 @@ llama_token sample_token(llama_token_data_array * candidates, std::mt19937 & rng
     sample_softmax(candidates);
     std::vector<float> probs;
     probs.reserve(candidates->size);
-    top_picks.clear();
+    TopPicksData newpick;
+
     for (size_t i = 0; i < candidates->size; ++i) {
         probs.push_back(candidates->data[i].p);
     }
@@ -595,17 +605,19 @@ llama_token sample_token(llama_token_data_array * candidates, std::mt19937 & rng
     std::discrete_distribution<> dist(probs.begin(), probs.end());
     int idx = dist(rng);
 
-    if(debugmode==1)
+    newpick.selected_token = FileFormatTokenizeID(candidates->data[idx].id, file_format, true);
+    newpick.selected_logprob = logf(candidates->data[idx].p);
+    newpick.selected_probability = candidates->data[idx].p;
+    newpick.selected_tokenid = candidates->data[idx].id;
+    for (size_t i = 0; (i < candidates->size && i<logprobs_max); ++i)
     {
-        top_picks.push_back(candidates->data[idx]);
-        for (size_t i = 0; (i < candidates->size && i<4); ++i)
-        {
-            if(i!=idx)
-            {
-                top_picks.push_back(candidates->data[i]);
-            }
-        }
+        newpick.tokens.push_back(FileFormatTokenizeID(candidates->data[i].id, file_format, true));
+        newpick.logprobs.push_back(logf(candidates->data[i].p));
+        newpick.p.push_back(candidates->data[i].p);
+        newpick.tokenid.push_back(candidates->data[i].id);
     }
+
+    top_picks_history.push_back(newpick);
 
     llama_token result = candidates->data[idx].id;
     return result;
@@ -1361,8 +1373,8 @@ const std::vector<samplers> & sampler_order, llama_grammar * grammar, float dyna
     //dry always first as logits cannot be resorted
     sample_dry(n_ctx, dry_penalty_last_n, dry_multiplier, dry_base, dry_allowed_length, dry_sequence_breakers, &candidates_p);
 
-    //prefilter to top 5k tokens for improved speed
-    sample_top_k(&candidates_p, 5000);
+    //prefilter to top 3k tokens for improved speed
+    sample_top_k(&candidates_p, 3000);
 
     if (mirostat == 1 || mirostat == 2)
     {
@@ -1489,7 +1501,7 @@ static bool kcpp_eval_image(llama_context * ctx_llama, float * img_embd, int num
         if (n_eval > n_batch) {
             n_eval = n_batch;
         }
-        llama_batch batch = {int32_t(n_eval), nullptr, (img_embd+i*n_embd), nullptr, nullptr, nullptr, nullptr, *n_past, 1, 0, };
+        llama_batch batch = {int32_t(n_eval), nullptr, (img_embd+i*n_embd), nullptr, nullptr, nullptr, nullptr,};
         if (llama_decode(ctx_llama, batch)) {
             fprintf(stderr, "\n%s : failed to eval image\n", __func__);
             return false;
@@ -2004,7 +2016,7 @@ ModelLoadResult gpttype_load_model(const load_model_inputs inputs, FileFormat in
         //determine mem per token
         std::vector<int> tmp = {1, 2, 3, 4};
         llama_kv_cache_clear(llama_ctx_v4);
-        auto er = llama_decode(llama_ctx_v4, llama_batch_get_one(tmp.data(), tmp.size(), 0, 0));
+        auto er = llama_decode(llama_ctx_v4, llama_batch_get_one(tmp.data(), tmp.size()));
         if(er!=0)
         {
             printf("\nLLAMA EVAL returned nonzero: %d\n",er);
@@ -2422,6 +2434,11 @@ const std::string & gpttype_get_pending_output()
     return concat_output_reader_copy_poll;
 }
 
+const std::vector<TopPicksData> gpttype_get_top_picks_data()
+{
+    return top_picks_history;
+}
+
 bool VecContainsIntVal(const std::vector<int> & vec, const int val)
 {
     for (const auto &matched : vec)
@@ -2459,6 +2476,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
         printf("\nWarning: KCPP text generation not initialized!\n");
         output.text = nullptr;
         output.status = 0;
+        output.prompt_tokens = output.completion_tokens = 0;
         output.stopreason = stop_reason::INVALID;
         generation_finished = true;
         return output;
@@ -2484,11 +2502,12 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     dry_repeat_count.clear();
     dry_sequence_breakers.clear();
     dry_max_token_repeat.clear();
+    top_picks_history.clear();
 
     double time0 = 0, time1 = 0, time2 = 0;
     timer_start();
 
-    for(int x=0;x<stop_token_max;++x)
+    for(int x=0;x<inputs.stop_sequence_len;++x)
     {
         std::string stopper = inputs.stop_sequence[x];
         if(stopper!="")
@@ -2516,7 +2535,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     delayed_generated_tokens_limit = 0;
     antislop_banned_token_ids.clear();
     banned_tokens.clear();
-    for(int x=0;x<ban_token_max;++x)
+    for(int x=0;x<inputs.banned_tokens_len;++x)
     {
         std::string word = inputs.banned_tokens[x];
         word = toLowerCase(word);
@@ -2574,7 +2593,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     }
 
     logit_biases.clear();
-    for(int x=0;x<logit_bias_max;++x)
+    for(int x=0;x<inputs.logit_biases_len;++x)
     {
         int32_t t_id = inputs.logit_biases[x].token_id;
         float bias = inputs.logit_biases[x].bias;
@@ -2652,7 +2671,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
 
     if (kcpp_data->dry_multiplier > 0)
     {
-        for (int x = 0; x < dry_seq_break_max; ++x)
+        for (int x = 0; x < inputs.dry_sequence_breakers_len; ++x)
         {
             std::string word = inputs.dry_sequence_breakers[x];
             if (word != "")
@@ -3061,7 +3080,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
             }
             else if(file_format == FileFormat::GGUF_GENERIC)
             {
-                evalres = (llama_decode(llama_ctx_v4, llama_batch_get_one(embd.data(), embdsize, n_past, 0))==0);
+                evalres = (llama_decode(llama_ctx_v4, llama_batch_get_one(embd.data(), embdsize))==0);
             }
             else if(file_format==FileFormat::RWKV_1 || file_format==FileFormat::RWKV_2)
             {
@@ -3133,6 +3152,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
                 fprintf(stderr, "\nFailed to predict at %d! Check your context buffer sizes!\n",n_past);
                 output.text = nullptr;
                 output.status = 0;
+                output.prompt_tokens = output.completion_tokens = 0;
                 output.stopreason = stop_reason::INVALID;
                 generation_finished = true;
                 return output;
@@ -3271,20 +3291,25 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
             {
                 printf("\rGenerating (%d / %d tokens)", (kcpp_data->n_predict - remaining_tokens), kcpp_data->n_predict);
             }
-            if(debugmode==1 && top_picks.size()>0)
+            if(debugmode==1 && top_picks_history.size()>0)
             {
                 printf(" [");
                 bool firstloop = true;
-                for (auto & pick : top_picks)
+                TopPicksData toppick = top_picks_history[top_picks_history.size()-1];
+                std::string topstr = toppick.selected_token;
+                ::utreplace(topstr, "\n", "\\n");
+                printf("(%s %.2f%%)", RemoveBell(topstr).c_str(), toppick.selected_probability*100);
+                int maxtoshow = (toppick.tokenid.size()>4?4:toppick.tokenid.size());
+                for (int i=0;i<maxtoshow;++i)
                 {
-                    if (!firstloop)
+                    if(toppick.tokenid[i]==toppick.selected_tokenid)
                     {
-                        printf(" ");
+                        continue;
                     }
-                    firstloop = false;
-                    std::string tokenizedstr = FileFormatTokenizeID(pick.id, file_format, true);
+                    printf(" ");
+                    std::string tokenizedstr = toppick.tokens[i];
                     ::utreplace(tokenizedstr, "\n", "\\n");
-                    printf("(%s %.2f%%)", RemoveBell(tokenizedstr).c_str(), pick.p*100);
+                    printf("(%s %.2f%%)", RemoveBell(tokenizedstr).c_str(), toppick.p[i]*100);
                 }
                 printf("]\n");
             }
@@ -3432,7 +3457,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
                             if(i>0 && sepsize>0)
                             {
                                 //add a separator between each image
-                                auto evr = llama_decode(llama_ctx_v4, llama_batch_get_one(llava_sep.data(), sepsize, n_past, 0));
+                                auto evr = llama_decode(llama_ctx_v4, llama_batch_get_one(llava_sep.data(), sepsize));
                                 if(evr!=0)
                                 {
                                     printf("\nError when appending llava separator: %d\n",evr);
@@ -3457,6 +3482,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
                                 fprintf(stderr, "\nFailed to eval llava image at %d!\n",n_past);
                                 output.text = nullptr;
                                 output.status = 0;
+                                output.prompt_tokens = output.completion_tokens = 0;
                                 output.stopreason = stop_reason::INVALID;
                                 generation_finished = true;
                                 return output;
@@ -3468,6 +3494,7 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
                             fprintf(stderr, "\nLLAVA image tokens mismatch at %d! (%d vs %d tokens)\n",n_past,llavatokenscounted,llavatokensevaled);
                             output.text = nullptr;
                             output.status = 0;
+                            output.prompt_tokens = output.completion_tokens = 0;
                             output.stopreason = stop_reason::INVALID;
                             generation_finished = true;
                             return output;
@@ -3520,6 +3547,9 @@ generation_outputs gpttype_generate(const generation_inputs inputs)
     printf("\nCtxLimit:%d/%d, Amt:%d/%d, Init:%.2fs, Process:%.2fs (%.1fms/T = %.2fT/s), Generate:%.2fs (%.1fms/T = %.2fT/s), Total:%.2fs (%.2fT/s)",(int)current_context_tokens.size(),(int)nctx, realnpredict, kcpp_data->n_predict, time0, time1, pt1, ts1, time2, pt2, ts2, (time1 + time2), tokens_per_second);
     fflush(stdout);
     output.status = 1;
+    int finaltokcount = (int)current_context_tokens.size()-realnpredict;
+    output.prompt_tokens = (finaltokcount<0?0:finaltokcount);
+    output.completion_tokens = realnpredict;
     output.stopreason = last_stop_reason;
     last_eval_time = pt2;
     last_process_time = pt1;

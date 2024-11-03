@@ -1,12 +1,9 @@
 #pragma once
 #include <cstdint>
 
-const int stop_token_max = 32;
-const int ban_token_max = 48;
 const int tensor_split_max = 16;
-const int logit_bias_max = 32;
-const int dry_seq_break_max = 24;
 const int images_max = 4;
+const int logprobs_max = 5;
 
 // match kobold's sampler list and order
 enum samplers
@@ -84,11 +81,6 @@ struct generation_inputs
     const int mirostat = 0;
     const float mirostat_eta = 0.0f;
     const float mirostat_tau = 0.0f;
-    const float dry_multiplier = 0.0f;
-    const float dry_base = 0.0f;
-    const int dry_allowed_length = 0;
-    const int dry_penalty_last_n = 0;
-    const char * dry_sequence_breakers[dry_seq_break_max] = {};
     const float xtc_threshold = 0.0f;
     const float xtc_probability = 0.0f;
     const samplers sampler_order[KCPP_SAMPLER_MAX] = {};
@@ -96,7 +88,6 @@ struct generation_inputs
     const bool allow_eos_token = false;
     const bool bypass_eos_token = false;
     const bool render_special = false;
-    const char * stop_sequence[stop_token_max] = {};
     const bool stream_sse = false;
     const char * grammar = nullptr;
     const bool grammar_retain_state = false;
@@ -104,19 +95,43 @@ struct generation_inputs
     const float dynatemp_range = 0.0f;
     const float dynatemp_exponent = 1.0f;
     const float smoothing_factor = 0.0f;
-    const logit_bias logit_biases[logit_bias_max] = {};
-    const char * banned_tokens[ban_token_max] = {};
+    const float dry_multiplier = 0.0f;
+    const float dry_base = 0.0f;
+    const int dry_allowed_length = 0;
+    const int dry_penalty_last_n = 0;
+    const int dry_sequence_breakers_len = 0;
+    const char ** dry_sequence_breakers = nullptr;
+    const int stop_sequence_len = 0;
+    const char ** stop_sequence = nullptr;
+    const int logit_biases_len = 0;
+    const logit_bias * logit_biases = nullptr;
+    const int banned_tokens_len = 0;
+    const char ** banned_tokens = nullptr;
 };
 struct generation_outputs
 {
     int status = -1;
     int stopreason = stop_reason::INVALID;
+    int prompt_tokens = 0;
+    int completion_tokens = 0;
     const char * text; //response will now be stored in c++ allocated memory
 };
 struct token_count_outputs
 {
     int count = 0;
     int * ids; //we'll just use shared memory for this one, bit of a hack
+};
+
+struct logprob_item {
+    int option_count;
+    const char * selected_token;
+    float selected_logprob;
+    const char * tokens[logprobs_max];
+    float * logprobs = nullptr;
+};
+struct last_logprobs_outputs {
+    int count = 0;
+    logprob_item * logprob_items = nullptr;
 };
 struct sd_load_model_inputs
 {
