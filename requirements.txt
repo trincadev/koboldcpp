@@ -7,7 +7,6 @@ flask_cors
 omegaconf
 ortools==9.11.4210
 pandas
-numpy<2.0.0
 pickle-mixin
 python-dotenv
 requests
@@ -15,6 +14,6 @@ sentencepiece
 soundfile==0.12.1
 sqlalchemy
 structlog
-torch==1.13.1
-torchaudio==0.13.1
+torch
+torchaudio
 transformers

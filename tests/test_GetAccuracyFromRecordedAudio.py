@@ -40,7 +40,9 @@ class TestGetAccuracyFromRecordedAudio(unittest.TestCase):
             output["matched_transcripts"] = expected_output["matched_transcripts"]
             output["matched_transcripts_ipa"] = expected_output["matched_transcripts_ipa"]
             output["pronunciation_accuracy"] = expected_output["pronunciation_accuracy"]
+            output["pair_accuracy_category"] = expected_output["pair_accuracy_category"]
             output["ipa_transcript"] = expected_output["ipa_transcript"]
+            output["real_transcript"] = expected_output["real_transcript"]
             output["real_transcripts_ipa"] = expected_output["real_transcripts_ipa"]
             self.assertEqual(expected_output, output)
 
