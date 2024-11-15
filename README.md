@@ -1,3 +1,12 @@
+---
+title: AI Pronunciation Trainer
+emoji: 🎤
+colorFrom: red
+colorTo: blue
+sdk: docker
+pinned: false
+license: mit
+---
 
 # AI Pronunciation Trainer
 
