@@ -1,67 +1,61 @@
 import json
+import os
 import unittest
 
 import epitran
+import structlog
 
-from aip_trainer.models import ModelInterfaces, RuleBasedModels
-from aip_trainer import pronunciationTrainer
+from aip_trainer.models import RuleBasedModels
+from aip_trainer import pronunciationTrainer, LOG_JSON_FORMAT
 from aip_trainer.lambdas import lambdaGetSample
+from aip_trainer.utils import session_logger
 
 
-def test_category(category: int, threshold_min: int, threshold_max: int):
-    event = {'body': json.dumps({'category': category, 'language': 'de'})}
-    for _ in range(1000):
+log_level = os.getenv("LOG_LEVEL", "INFO")
+session_logger.setup_logging(json_logs=LOG_JSON_FORMAT, log_level=log_level)
+test_logger = structlog.stdlib.get_logger(__name__)
+
+
+def test_category(category: int, threshold_min: int, threshold_max: int, n: int = 1000):
+    for _ in range(n):
+        event = {'body': json.dumps({'category': category, 'language': 'de'})}
         response = lambdaGetSample.lambda_handler(event, [])
         response_dict = json.loads(response)
-        number_of_words = len(
-            response_dict['real_transcript'][0].split())
-        length_valid = threshold_min < number_of_words <= threshold_max
-        if not length_valid:
-            print('Category ', category,
-                  ' had a sentence with length ', number_of_words)
-            return False
-    return True
+        number_of_words = len(response_dict['real_transcript'][0].split())
+        try:
+            assert threshold_min < number_of_words <= threshold_max
+        except AssertionError:
+            test_logger.error(
+                f"Category: {category} had a sentence with length {number_of_words}.")
+            raise AssertionError
 
 
 class TestDataset(unittest.TestCase):
-
     def test_random_sentences(self):
-
-        self.assertFalse(test_category(0, 0, 8))
+        test_category(0, 0, 40)
 
     def test_easy_sentences(self):
-
-        self.assertTrue(test_category(1, 0, 8))
+        test_category(1, 0, 8)
 
     def test_normal_sentences(self):
-        self.assertTrue(test_category(2, 8, 20))
+        test_category(2, 8, 20)
 
     def test_hard_sentences(self):
-        self.assertTrue(test_category(3, 20, 10000))
-
-
-def check_phonem_converter(converter: ModelInterfaces.ITextToPhonemModel, input_phonem: str, expected_output: str):
-    output = converter.convertToPhonem(input_phonem)
-
-    is_correct = output == expected_output
-    if not is_correct:
-        print('Conversion from "', input_phonem, '" should be "',
-              expected_output, '", but was "', output, '"')
-    return is_correct
+        test_category(3, 20, 10000)
 
 
 class TestPhonemConverter(unittest.TestCase):
 
     def test_english(self):
         phonem_converter = RuleBasedModels.EngPhonemConverter()
-        self.assertTrue(check_phonem_converter(
-            phonem_converter, 'Hello, this is a test', 'hɛˈloʊ, ðɪs ɪz ə tɛst'))
+        output = phonem_converter.convertToPhonem('Hello, this is a test')
+        self.assertEqual(output, 'hɛˈloʊ, ðɪs ɪz ə tɛst')
 
-    def test_german(self):
-        phonem_converter = RuleBasedModels.EpitranPhonemConverter(
-            epitran.Epitran('deu-Latn'))
-        self.assertTrue(check_phonem_converter(
-            phonem_converter, 'Hallo, das ist ein Test', 'haloː, dɑːs ɪst ain tɛst'))
+    def test_german_ok(self):
+        deu_latn = epitran.Epitran('deu-Latn')
+        phonem_converter = RuleBasedModels.EpitranPhonemConverter(deu_latn)
+        output = phonem_converter.convertToPhonem('Hallo, das ist ein Test')
+        self.assertEqual(output, 'haloː, dɑːs ɪst ain tɛst')
 
 
 trainer_SST_lambda = {'de': pronunciationTrainer.getTrainer("de")}
@@ -78,7 +72,7 @@ class TestScore(unittest.TestCase):
         pronunciation_accuracy, _ = trainer_SST_lambda['de'].getPronunciationAccuracy(
             real_and_transcribed_words)
 
-        self.assertTrue(int(pronunciation_accuracy) == 100)
+        self.assertEqual(int(pronunciation_accuracy), 100)
 
     def test_incorrect_transcription(self):
         words_real = 'Ich habe sehr viel glück, am leben und gesund zu sein'
@@ -90,7 +84,7 @@ class TestScore(unittest.TestCase):
         pronunciation_accuracy, _ = trainer_SST_lambda['de'].getPronunciationAccuracy(
             real_and_transcribed_words)
 
-        self.assertTrue(int(pronunciation_accuracy) == 71)
+        self.assertEqual(int(pronunciation_accuracy), 71)
 
 
 if __name__ == '__main__':
