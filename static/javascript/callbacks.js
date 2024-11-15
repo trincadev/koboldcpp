@@ -23,9 +23,6 @@ let currentSoundRecorded = false;
 let currentText, currentIpa, real_transcripts_ipa, matched_transcripts_ipa;
 let wordCategories;
 let startTime, endTime;
-let allSamples = {};
-let currentSamplesObj = {};
-var timeout = null
 
 // API related variables 
 let AILanguage = "de"; // Standard is German
@@ -180,7 +177,7 @@ const prepareUiForNextSample = async () => {
     if (soundFileBad == null)
         cacheSoundFiles();
 
-    updateScore(parseFloat(document.getElementById("pronunciation_accuracy").innerHTML));
+    updateScore(parseFloat(document.getElementById("pronunciation_accuracy").innerText));
 
     document.getElementById("main_title").innerText = "Processing new sample...";
 }
@@ -198,7 +195,6 @@ const populateSampleById = (dataById) => {
     document.getElementById("recorded_ipa_script").innerText = ""
     document.getElementById("pronunciation_accuracy").innerText = "";
     document.getElementById("single_word_ipa_pair").innerText = "Reference | Spoken"
-    // document.getElementById("section_accuracy").innerText = "| Score: " + currentScore.toString() + " - (" + currentSample.toString() + ")";
     document.getElementById("section_accuracy").innerText = `| Score: ${currentScore.toString()} - sample n: ${currentSample.toString()}`;
     currentSample += 1;
 
@@ -277,7 +273,6 @@ const changeLanguage = (language, generateNewSample = false) => {
             }
         }
     }
-    getTableFromSamples(allSamples, `${AILanguage}_sentence`);
     if (generateNewSample)
         getNextSample();
 }
@@ -326,7 +321,7 @@ const startMediaDevice = () => {
             try {
                 await fetch(apiMainPathSTS + '/GetAccuracyFromRecordedAudio', {
                     method: "post",
-                    body: JSON.stringify({ "title": currentText[0], "base64Audio": audioBase64, "language": AILanguage }),
+                    body: JSON.stringify({ "title": currentText, "base64Audio": audioBase64, "language": AILanguage }),
 
                 }).then(res => res.json()).
                     then(mediaData => {
@@ -349,7 +344,7 @@ const startMediaDevice = () => {
                         real_transcripts_ipa = mediaData.real_transcripts_ipa.split(" ")
                         matched_transcripts_ipa = mediaData.matched_transcripts_ipa.split(" ")
                         wordCategories = mediaData.pair_accuracy_category.split(" ")
-                        let currentTextWords = currentText[0].split(" ")
+                        let currentTextWords = currentText.split(" ")
 
                         coloredWords = "";
                         for (let word_idx = 0; word_idx < currentTextWords.length; word_idx++) {
@@ -406,7 +401,8 @@ const playSoundForAnswerAccuracy = async (accuracy) => {
 const playAudio = async () => {
 
     document.getElementById("main_title").innerText = "Generating sound...";
-    playWithMozillaApi(currentText[0]);
+    // console.debug(`playAudio:: currentText: `, typeof currentText, "=>", currentText, "#");
+    playWithMozillaApi(currentText);
     document.getElementById("main_title").innerText = "Current Sound was played";
 
 };
@@ -472,7 +468,8 @@ const stopRecording = () => {
 const playCurrentWord = async (word_idx) => {
 
     document.getElementById("main_title").innerText = "Generating word...";
-    playWithMozillaApi(currentText[0].split(' ')[word_idx]);
+    // console.debug(`playCurrentWord:: currentText: `, typeof currentText, "=>", currentText, "#");
+    playWithMozillaApi(currentText.split(' ')[word_idx]);
     document.getElementById("main_title").innerText = "Word was played";
 }
 
@@ -532,10 +529,6 @@ const wrapWordForIndividualPlayback = (word, word_idx) => {
 // ########## Function to initialize server ###############
 // This is to try to avoid aws lambda cold start 
 try {
-    fetch(apiMainPathSTS + '/getAllSamples').then(res => res.json()).then(dataAllSamples => {
-        populateAllSamples(dataAllSamples);
-        getTableFromSamples(dataAllSamples, `${AILanguage}_sentence`);
-    });
     fetch(apiMainPathSTS + '/GetAccuracyFromRecordedAudio', {
         method: "post",
         body: JSON.stringify({ "title": '', "base64Audio": '', "language": AILanguage }),
@@ -571,67 +564,30 @@ const initializeServer = async () => {
     }
 }
 
-const populateAllSamples = async (allData) => {
-    allSamples = allData;
+const getSampleFromTextInput = async (AILanguage, textInput) => {
+    await fetch(apiMainPathSample + '/getSample', {
+        method: "post",
+        body: JSON.stringify({
+            "language": AILanguage, "transcript": textInput
+        }),
+    }).then(res => {
+        let res2json = res.json()
+        // console.debug(`getSampleFromTextInput:: res2json: `, typeof res2json, "=>", res2json, "#");
+        return res2json
+    }).then(dataOnInput => {
+        console.log(`getSampleFromTextInput:: dataOnInput: `, typeof dataOnInput, "=>", dataOnInput, "#");
+        populateSampleById(dataOnInput)
+    })
 }
 
-const getTableFromSamples = async (obj, lang, isFiltered = false) => {
-    let table = document.getElementById("field-samples");
-    table.innerHTML = "";
-    let objLang = obj[lang];
-    // let lenAllSamples = Object.entries(allSamples[lang]).length;
-    // console.debug(`getTableFromSamples, isFiltered: ${isFiltered}, typeof objLang: ${typeof objLang}, lenAllSamples:${lenAllSamples}, objLang.length: `, Object.entries(objLang).length, "#", objLang);
-    for (let key2 in objLang) {
-        var tr = createTableRow(`${key2}: ${objLang[key2]} || ${lang}.`, key2, isFiltered);
-        table.appendChild(tr);
-    }
-    table.appendChild(tr);
-}
-
-const createTableRow = (contentRow, sampleIdx, isFiltered = false) => {
-    var tr = document.createElement('tr');
-    tr.append(`${contentRow}`);
-    tr.onclick = async function () {
-        await prepareUiForNextSample()
-        // console.debug(`createTableRow:: ${isFiltered}, sampleIdx: `, sampleIdx);
-        await fetch(apiMainPathSample + '/getSample', {
-            method: "post",
-            body: JSON.stringify({
-                "language": AILanguage, "idx": sampleIdx
-            }),
-        }).then(res => {
-            let res2json = res.json()
-            // console.debug(`createTableRow:: ${isFiltered}, res2json: `, typeof res2json, "=>", res2json, "#");
-            return res2json
-        }).then(dataOnRowCreation => {
-            // console.debug(`createTableRow:: ${isFiltered}, dataOnRowCreation: `, typeof dataOnRowCreation, "=>", dataOnRowCreation, "#");
-            populateSampleById(dataOnRowCreation)
-            tr.style["background-color"] = "#f0f0f0";
-        })
-    };
-    return tr;
-}
-
-const filterAllSamples = async (obj, filter, lang) => {
-    if (filter == "") {
-        currentSamplesObj = {...obj}
-    };
-    objByLAng = obj[lang];
-    const filtered = Object.entries(objByLAng).filter(([key, value]) => value.toLowerCase().includes(filter));
-    currentSamplesObj = {
-        [lang]: Object.entries(filtered).map(([key, value]) => value[1])
-    };
-}
-
-// todo: fix the request from the rows filtered not working
 $(document).ready(function(){
-    $("#field-filter-samples").on("keyup", function(e) {
+    $("#field-filter-samples").on("keyup", async function(e) {
         e.preventDefault();
         var keycode = (e.keyCode ? e.keyCode : e.which);
         if (keycode === 13 || e.key === 'Enter') {
-            var valueFilter = $(this).val().toLowerCase();
-            filterAllSamples(allSamples, valueFilter, `${AILanguage}_sentence`)
-            getTableFromSamples(currentSamplesObj, `${AILanguage}_sentence`, true);
+            var valueFilter = $(this).val()
+            // console.debug(`input:: valueFilter: `, typeof valueFilter, "=>", valueFilter, ", AILanguage: ", AILanguage, "#");
+            await getSampleFromTextInput(AILanguage, valueFilter);
         }
     });
 });

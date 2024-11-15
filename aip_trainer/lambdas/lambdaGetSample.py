@@ -60,20 +60,18 @@ def lambda_handler(event, context):
         category = int(body['category'])
     except KeyError:
         category = 0
-
     language = body['language']
     try:
-        sample_idx = int(body['idx'])
+        current_transcript = str(body["transcript"])
     except KeyError:
-        sample_idx = None
-
-    app_logger.info(f"category={category}, language={language}, sample_idx={sample_idx}.")
-    lambda_df_lang = lambda_database[language]
-    current_transcript = lambda_df_lang[sample_idx] if sample_idx is not None else lambda_df_lang.get_random_sample_from_df(language, category)
+        lambda_df_lang = lambda_database[language]
+        current_transcript = lambda_df_lang.get_random_sample_from_df(language, category)
+    app_logger.info(f"category={category}, language={language}, current_transcript={current_transcript}.")
     # sentence_category = getSentenceCategory(current_transcript[0])
-    current_ipa = lambda_ipa_converter[language].convertToPhonem(current_transcript[0])
+    current_transcript = current_transcript if isinstance(current_transcript, str) else current_transcript[0]
+    current_ipa = lambda_ipa_converter[language].convertToPhonem(current_transcript)
 
-    app_logger.info(f"real_transcript={current_transcript}, ipa_transcript={current_ipa}.")
+    app_logger.info(f"real_transcript='{current_transcript}', ipa_transcript='{current_ipa}'.")
     result = {
         'real_transcript': current_transcript,
         'ipa_transcript': current_ipa,

@@ -144,7 +144,7 @@ a.disabled {
 	left: 2%;
 	top: 63%;
 	transform: translate(-0%, -0%);
-	height: 30%;
+	height: 10%;
 	width: 96%;
 	max-width: 96%;
 	background: #ffff;
@@ -152,7 +152,7 @@ a.disabled {
 	border-radius: 20px;
 	box-shadow: 0 0 20px 8px #d0d0d0;
 	overflow: scroll;
-    max-height: 30em;
+    max-height: 15%;
 }
 
 .container-small {
@@ -240,8 +240,8 @@ a.disabled {
 
 .mic-button-div {
 	position: fixed;
-	left: 60%;
-	top: 5%
+	left: 50%;
+	top: 80%
 }
 
 /*############### Drop-down ############# */
@@ -412,22 +412,22 @@ a.disabled {
 		box-shadow: 0 0 20px 8px #d0d0d0;
 	}
 
-    .container2 {
-        display: block;
-        position: absolute;
-        left: 2%;
-        top: 63%;
-        transform: translate(-0%, -0%);
-        height: 30%;
-        width: 96%;
-        max-width: 96%;
-        background: #ffff;
-        overflow: hidden;
-        border-radius: 20px;
-        box-shadow: 0 0 20px 8px #d0d0d0;
-        overflow: scroll;
-        max-height: 30em;
-    }
+	.container2 {
+		display: block;
+		position: absolute;
+		left: 2%;
+		top: 63%;
+		transform: translate(-0%, -0%);
+		height: 10%;
+		width: 96%;
+		max-width: 96%;
+		background: #ffff;
+		overflow: hidden;
+		border-radius: 20px;
+		box-shadow: 0 0 20px 8px #d0d0d0;
+		overflow: scroll;
+		max-height: 15%;
+	}
 
 	.icon-text {
 		font-size: 0.8em !important;
@@ -445,7 +445,7 @@ a.disabled {
 		/* 80px */
 		height: 3.5em;
 		padding-top: 0.4em;
-		left: 40%;
+		left: 50%;
 		line-height: 0px;
 		border: 6px solid #fff;
 		border-radius: 50%;
@@ -460,8 +460,8 @@ a.disabled {
 
 	.mic-button-div {
 		position: fixed;
-		left: 40%;
-		top: 5%
+		left: 50%;
+		top: 80%
 	}
 
 	.link-icon-div {

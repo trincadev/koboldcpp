@@ -10,7 +10,7 @@ def helper_category(category: int, threshold_min: int, threshold_max: int, n: in
         event = {'body': json.dumps({'category': category, 'language': 'de'})}
         response = lambdaGetSample.lambda_handler(event, [])
         response_dict = json.loads(response)
-        number_of_words = len(response_dict['real_transcript'][0].split())
+        number_of_words = len(response_dict['real_transcript'].split())
         try:
             assert threshold_min < number_of_words <= threshold_max
         except AssertionError:
