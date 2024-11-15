@@ -90,6 +90,7 @@ def get_resulting_string(mapped_indices: np.array, words_estimated: list, words_
     WORD_NOT_FOUND_TOKEN = '-'
     number_of_real_words = len(words_real)
     for word_idx in range(number_of_real_words):
+        app_logger.debug(f"{word_idx} => {mapped_indices} == {word_idx}, {mapped_indices == word_idx} #")
         position_of_real_word_indices = np.where(
             mapped_indices == word_idx)[0].astype(int)
 
@@ -108,25 +109,35 @@ def get_resulting_string(mapped_indices: np.array, words_estimated: list, words_
             error = 99999
             best_possible_combination = ''
             best_possible_idx = -1
-            for single_word_idx in position_of_real_word_indices:
-                idx_above_word = single_word_idx >= len(words_estimated)
-                if idx_above_word:
-                    continue
-                error_word = WordMetrics.edit_distance_python(
-                    words_estimated[single_word_idx], words_real[word_idx])
-                if error_word < error:
-                    error = error_word*1
-                    best_possible_combination = words_estimated[single_word_idx]
-                    best_possible_idx = single_word_idx
+            best_possible_combination, best_possible_idx = inner_get_resulting_string(
+                best_possible_combination, best_possible_idx, error, position_of_real_word_indices,
+                word_idx, words_estimated, words_real
+            )
 
             mapped_words.append(best_possible_combination)
             mapped_words_indices.append(best_possible_idx)
-            continue
+            # continue
 
     return mapped_words, mapped_words_indices
 
 
-def get_best_mapped_words(words_estimated: list, words_real: list) -> list:
+def inner_get_resulting_string(
+        best_possible_combination, best_possible_idx, error, position_of_real_word_indices, word_idx, words_estimated, words_real
+    ):
+    for single_word_idx in position_of_real_word_indices:
+        idx_above_word = single_word_idx >= len(words_estimated)
+        if idx_above_word:
+            continue
+        error_word = WordMetrics.edit_distance_python(
+            words_estimated[single_word_idx], words_real[word_idx])
+        if error_word < error:
+            error = error_word * 1
+            best_possible_combination = words_estimated[single_word_idx]
+            best_possible_idx = single_word_idx
+    return best_possible_combination, best_possible_idx
+
+
+def get_best_mapped_words(words_estimated: list, words_real: list) -> tuple[list, list]:
 
     word_distance_matrix = get_word_distance_matrix(
         words_estimated, words_real)

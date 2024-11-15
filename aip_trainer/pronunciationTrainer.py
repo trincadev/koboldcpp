@@ -128,7 +128,7 @@ class PronunciationTrainer:
         app_logger.info('ok, return audio transcript!')
         return current_recorded_transcript, current_recorded_ipa, current_recorded_word_locations
 
-    def getWordLocationsFromRecordInSeconds(self, word_locations, mapped_words_indices) -> list:
+    def getWordLocationsFromRecordInSeconds(self, word_locations, mapped_words_indices) -> tuple[str, str]:
         start_time = []
         end_time = []
         for word_idx in range(len(mapped_words_indices)):
@@ -163,7 +163,7 @@ class PronunciationTrainer:
                                                    self.ipa_converter.convertToPhonem(mapped_words[word_idx])))
         return real_and_transcribed_words, real_and_transcribed_words_ipa, mapped_words_indices
 
-    def getPronunciationAccuracy(self, real_and_transcribed_words_ipa) -> float:
+    def getPronunciationAccuracy(self, real_and_transcribed_words_ipa) -> tuple[float, list]:
         total_mismatches = 0.
         number_of_phonemes = 0.
         current_words_pronunciation_accuracy = []
