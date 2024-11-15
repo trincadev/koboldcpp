@@ -22,7 +22,16 @@ You should be able to run it locally without any major issues as long as you’r
 
 I upgraded the frontend (jquery@3.7.1, bootstrap@5.3.3) and backend (pytorch==1.13.1, numpy<2.0.0) libraries where possible: for example right now this project doesn't work with pytorch > 2.0.0, then we are locked with pytorch == 1.13.1.
 
-### Unused classes and functions now removed
+### E2E tests with playwright
+
+Normally I use Visual Studio Code to write and execute my playwright tests, however it's always possible to run them from cli (from the `static` folder, using a node package manager like `npm` or `pnpm`):
+
+```bash
+pnpm install
+pnpm playwright test
+```
+
+### Unused classes and functions (now removed)
 
 - `aip_trainer.lambdas.lambdaTTS.*`
 - `aip_trainer.models.models.getTTSModel()`
@@ -32,10 +41,11 @@ I upgraded the frontend (jquery@3.7.1, bootstrap@5.3.3) and backend (pytorch==1.
 
 ### TODO
 
-- add e2e tests with playwright
+- add more e2e tests with playwright
 - move from pytorch to onnxruntime
 - refactor frontend with something more modern (e.g. vuejs)
 - refactor css style with tailwindcss
+- add an updated online version on Cloudflare or AWS
 
 ## Online version
 
