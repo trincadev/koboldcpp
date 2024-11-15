@@ -20,7 +20,7 @@ You should be able to run it locally without any major issues as long as you’r
 
 ## Changes on [trincadev's](https://github.com/trincadev/) [repository](https://github.com/trincadev/ai-pronunciation-trainer)
 
-I upgraded the frontend (jquery@3.7.1, bootstrap@5.3.3) and backend (pytorch==1.13.1, numpy<2.0.0) libraries where possible: for example right now this project doesn't work with pytorch > 2.0.0, then we are locked with pytorch == 1.13.1.
+I upgraded the frontend (jquery@3.7.1, bootstrap@5.3.3) and backend (pytorch==2.2.2, torchaudio==2.2.2) libraries. Should work also with pytorch > 2.2.2, but right now I can't try it on macOS intel.
 
 ### E2E tests with playwright
 
@@ -39,19 +39,16 @@ pnpm playwright test
 - `aip_trainer.models.AllModels.NeuralTTS`
 - `aip_trainer.models.AllModels.NeuralTranslator`
 
-### Security implication of using pytorch v1.13.1
+### DONE
 
-Pytorch versions prior to 2.2.0 are known to have security vulnerabilities:
-
-- https://security.snyk.io/vuln/SNYK-PYTHON-TORCH-6619806
-- https://security.snyk.io/vuln/SNYK-PYTHON-TORCH-6649934
-
-For this reason, it's best to use this project only in a local environment.
+- upgrade jquery>3.x
+- upgrade pytorch>2.x
+- e2e playwright tests
 
 ### TODO
 
 - add more e2e tests with playwright
-- move from pytorch to onnxruntime
+- move from pytorch to onnxruntime (if possible)
 - refactor frontend with something more modern (e.g. vuejs)
 - refactor css style with tailwindcss
 - add an updated online version on Cloudflare or AWS
