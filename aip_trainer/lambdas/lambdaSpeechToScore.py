@@ -1,7 +1,7 @@
-
 import base64
 import json
 import os
+import tempfile
 import time
 
 import audioread
@@ -11,7 +11,6 @@ from torchaudio.transforms import Resample
 
 from aip_trainer import WordMatching as wm, app_logger
 from aip_trainer import pronunciationTrainer
-from aip_trainer import utilsFileIO
 
 
 trainer_SST_lambda = {
@@ -23,7 +22,6 @@ transform = Resample(orig_freq=48000, new_freq=16000)
 
 
 def lambda_handler(event, context):
-
     data = json.loads(event['body'])
 
     real_text = data['title']
@@ -43,21 +41,24 @@ def lambda_handler(event, context):
             'body': ''
         }
 
-    start = time.time()
-    random_file_name = './' + utilsFileIO.generateRandomString() + '.ogg'
-    f = open(random_file_name, 'wb')
-    f.write(file_bytes)
-    f.close()
-    duration = time.time() - start
-    app_logger.info(f'Time for saving binary in file: {duration}.')
+    start0 = time.time()
+    with tempfile.NamedTemporaryFile(prefix="temp_sound_speech_score_", suffix=".ogg", delete=False) as f1:
+        f1.write(file_bytes)
+        duration = time.time() - start0
+        app_logger.info(f'Saved binary in file in {duration}s.')
+        random_file_name = f1.name
 
     start = time.time()
+    app_logger.info(f'Loading .ogg file file {random_file_name} ...')
     signal, fs = audioread_load(random_file_name)
+
+    duration = time.time() - start
+    app_logger.info(f'Read .ogg file {random_file_name} in {duration}s.')
 
     signal = transform(torch.Tensor(signal)).unsqueeze(0)
 
     duration = time.time() - start
-    app_logger.info(f'Time for loading .ogg file file: {duration}.')
+    app_logger.info(f'Loaded .ogg file {random_file_name} in {duration}s.')
 
     result = trainer_SST_lambda[language].processAudioForGivenText(
         signal, real_text)
@@ -65,7 +66,7 @@ def lambda_handler(event, context):
     start = time.time()
     os.remove(random_file_name)
     duration = time.time() - start
-    app_logger.info(f'Time for deleting file: {duration}')
+    app_logger.info(f'Deleted file {random_file_name} in {duration}s.')
 
     start = time.time()
     real_transcripts_ipa = ' '.join(
@@ -83,7 +84,6 @@ def lambda_handler(event, context):
 
     is_letter_correct_all_words = ''
     for idx, word_real in enumerate(words_real):
-
         mapped_letters, mapped_letters_indices = wm.get_best_mapped_words(
             mapped_words[idx], word_real)
 
@@ -96,7 +96,8 @@ def lambda_handler(event, context):
     pair_accuracy_category = ' '.join(
         [str(category) for category in result['pronunciation_categories']])
     duration = time.time() - start
-    app_logger.info(f'Time to post-process results: {duration}')
+    duration_tot = time.time() - start0
+    app_logger.info(f'Time to post-process results: {duration}, tot_duration:{duration_tot}.')
 
     res = {'real_transcript': result['recording_transcript'],
            'ipa_transcript': result['recording_ipa'],
@@ -110,7 +111,11 @@ def lambda_handler(event, context):
 
     return json.dumps(res)
 
+
 # From Librosa
+
+def calc_start_end(sr_native, time_position, n_channels):
+    return int(np.round(sr_native * time_position)) * n_channels
 
 
 def audioread_load(path, offset=0.0, duration=None, dtype=np.float32):
@@ -120,17 +125,18 @@ def audioread_load(path, offset=0.0, duration=None, dtype=np.float32):
     """
 
     y = []
+    app_logger.debug(f"reading audio file at path:{path} ...")
     with audioread.audio_open(path) as input_file:
         sr_native = input_file.samplerate
         n_channels = input_file.channels
 
-        s_start = int(np.round(sr_native * offset)) * n_channels
+        s_start = calc_start_end(sr_native, offset, n_channels)
 
         if duration is None:
             s_end = np.inf
         else:
-            s_end = s_start + \
-                (int(np.round(sr_native * duration)) * n_channels)
+            duration = calc_start_end(sr_native, duration, n_channels)
+            s_end = duration + s_start
 
         n = 0
 
@@ -167,6 +173,7 @@ def audioread_load(path, offset=0.0, duration=None, dtype=np.float32):
         y = np.empty(0, dtype=dtype)
 
     return y, sr_native
+
 
 # From Librosa
 
