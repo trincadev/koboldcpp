@@ -2,7 +2,7 @@ import json
 import unittest
 
 from aip_trainer.lambdas import lambdaGetSample
-from tests import test_logger
+from tests import test_logger, TEST_ROOT_FOLDER
 
 
 def helper_category(category: int, threshold_min: int, threshold_max: int, n: int = 1000):
@@ -31,6 +31,18 @@ class TestDataset(unittest.TestCase):
 
     def test_hard_sentences(self):
         helper_category(3, 20, 10000)
+
+    def test_get_pickle2json_dataframe(self):
+        import os
+
+        custom_filename = 'test_data_de_en_2'
+        lambdaGetSample.get_pickle2json_dataframe(custom_filename, TEST_ROOT_FOLDER)
+        with open(TEST_ROOT_FOLDER / f'{custom_filename}.json', 'r') as src1:
+            with open(TEST_ROOT_FOLDER / f'{custom_filename}_expected.json', 'r') as src2:
+                json1 = json.load(src1)
+                json2 = json.load(src2)
+                assert json1 == json2
+        os.remove(TEST_ROOT_FOLDER / f'{custom_filename}.json')
 
 
 if __name__ == '__main__':

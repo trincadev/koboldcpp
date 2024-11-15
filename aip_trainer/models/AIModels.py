@@ -34,33 +34,3 @@ class NeuralASR(ModelInterfaces.IASRModel):
 
             self.audio_transcript, self.word_locations_in_samples = self.decoder(
                 nn_output[0, :, :].detach(), audio_length_in_samples, word_align=True)
-
-
-class NeuralTTS(ModelInterfaces.ITextToSpeechModel):
-    def __init__(self, model: torch.nn.Module, sampling_rate: int) -> None:
-        super().__init__()
-        self.model = model
-        self.sampling_rate = sampling_rate
-
-    def getAudioFromSentence(self, sentence: str) -> np.array:
-        with torch.inference_mode():
-            audio_transcript = self.model.apply_tts(texts=[sentence],
-                                                    sample_rate=self.sampling_rate)[0]
-
-        return audio_transcript
-
-
-class NeuralTranslator(ModelInterfaces.ITranslationModel):
-    def __init__(self, model: torch.nn.Module, tokenizer) -> None:
-        super().__init__()
-        self.model = model
-        self.tokenizer = tokenizer
-
-    def translateSentence(self, sentence: str) -> str:
-        """Get the transcripts of the process audio"""
-        tokenized_text = self.tokenizer(sentence, return_tensors='pt')
-        translation = self.model.generate(**tokenized_text)
-        translated_text = self.tokenizer.batch_decode(
-            translation, skip_special_tokens=True)[0]
-
-        return translated_text

@@ -1,6 +1,5 @@
 import json
 import pickle
-import random
 from pathlib import Path
 
 import epitran
@@ -89,21 +88,20 @@ def getSentenceCategory(sentence) -> int:
             return category + 1
 
 
-if __name__ == "__main__":
-    import pandas as pd
-    with open(sample_folder / 'data_de_en_2.pickle', 'rb') as handle:
-        df = pickle.load(handle)
+def get_pickle2json_dataframe(
+        custom_pickle_filename_no_ext: Path | str = 'data_de_en_2',
+        custom_folder: Path = sample_folder
+    ):
+    custom_folder = Path(custom_folder)
+    with open(custom_folder / f'{custom_pickle_filename_no_ext}.pickle', 'rb') as handle:
+        df2 = pickle.load(handle)
         pass
-        df["de_category"] = df["de_sentence"].apply(getSentenceCategory)
+        df2["de_category"] = df2["de_sentence"].apply(getSentenceCategory)
         print("de_category added")
-        df["en_category"] = df["en_sentence"].apply(getSentenceCategory)
+        df2["en_category"] = df2["en_sentence"].apply(getSentenceCategory)
         print("en_category added")
-    df_json = df.to_json()
-    with open(sample_folder / 'data_de_en_with_categories.json', 'w') as dst:
+    df_json = df2.to_json()
+    with open(custom_folder / f'{custom_pickle_filename_no_ext}.json', 'w') as dst:
         dst.write(df_json)
         print("data_de_en_with_categories.json written")
-    with open(sample_folder / 'data_de_en_with_categories.json', 'r') as src:
-        jj = json.load(src)
-        print("jj:", jj)
-        df2 = pd.read_json(json.dumps(jj))
-        print(df2)
+

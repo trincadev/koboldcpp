@@ -7,7 +7,6 @@ from flask_cors import CORS
 
 from aip_trainer.lambdas import lambdaGetSample
 from aip_trainer.lambdas import lambdaSpeechToScore
-from aip_trainer.lambdas import lambdaTTS
 
 
 app = Flask(__name__, template_folder="static")
@@ -20,40 +19,6 @@ rootPath = ''
 @app.route(rootPath+'/')
 def main():
     return render_template('main.html')
-
-
-@app.route(rootPath+'/getAllSamples')
-def getDataDeEnAll():
-    import pickle
-    from pathlib import Path
-    sample_folder = Path(PROJECT_ROOT_FOLDER / "aip_trainer" / "lambdas")
-    with open(sample_folder / 'data_de_en_2.pickle', 'rb') as handle:
-        df = pickle.load(handle)
-        j = df.to_json()
-        return Response(j, mimetype='application/json')
-
-
-@app.route(rootPath+'/getSampleSearch', methods=['POST'])
-def getDataDeEnSearch():
-    import pickle
-    from pathlib import Path
-    sample_folder = Path(PROJECT_ROOT_FOLDER / "aip_trainer" / "lambdas")
-    with open(sample_folder / 'data_de_en_2.pickle', 'rb') as handle:
-        event = request.get_json(force=True)
-        df = pickle.load(handle)
-        lang = event.get('language')
-        filter_key = event.get('search')
-        df_by_language = df[f"{lang}_sentence"]
-        filter_obj = df_by_language.str.contains(filter_key)
-        filtered = df_by_language[filter_obj]
-        j = filtered.to_json()
-        return Response(j, mimetype='application/json')
-
-
-@app.route(rootPath+'/getAudioFromText', methods=['POST'])
-def getAudioFromText():
-    event = {'body': json.dumps(request.get_json(force=True))}
-    return lambdaTTS.lambda_handler(event, [])
 
 
 @app.route(rootPath+'/getSample', methods=['POST'])
