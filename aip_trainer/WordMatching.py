@@ -84,7 +84,7 @@ def get_best_path_from_distance_matrix(word_distance_matrix):
         return []
 
 
-def get_resulting_string(mapped_indices: np.array, words_estimated: list, words_real: list) -> list:
+def get_resulting_string(mapped_indices: np.array, words_estimated: list, words_real: list) -> tuple[list, list]:
     mapped_words = []
     mapped_words_indices = []
     WORD_NOT_FOUND_TOKEN = '-'

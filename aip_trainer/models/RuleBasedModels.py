@@ -13,10 +13,9 @@ class EpitranPhonemConverter(ModelInterfaces.ITextToPhonemModel):
         self.epitran_model = epitran_model
 
     def convertToPhonem(self, sentence: str) -> str:
-
-        app_logger.info(f'starting EpitranPhonemConverter.convertToPhonem...')
+        app_logger.debug(f'starting EpitranPhonemConverter.convertToPhonem for sentence/token "{sentence}"...')
         phonem_representation = self.epitran_model.transliterate(sentence)
-        app_logger.info(f'EpitranPhonemConverter: got phonem_representation!')
+        app_logger.debug(f'EpitranPhonemConverter: got phonem_representation for sentence/token "{sentence}"!')
         return phonem_representation
 
 
@@ -26,6 +25,8 @@ class EngPhonemConverter(ModelInterfaces.ITextToPhonemModel):
         super().__init__()
 
     def convertToPhonem(self, sentence: str) -> str:
+        app_logger.debug(f'starting EngPhonemConverter.convertToPhonem for sentence/token "{sentence}"...')
         phonem_representation = eng_to_ipa.convert(sentence)
         phonem_representation = phonem_representation.replace('*','')
+        app_logger.debug(f'EngPhonemConverter: got phonem_representation for sentence/token "{sentence}"!')
         return phonem_representation

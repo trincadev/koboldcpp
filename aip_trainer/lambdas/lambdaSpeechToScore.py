@@ -50,7 +50,7 @@ def lambda_handler(event, context):
 
     start = time.time()
     app_logger.info(f'Loading .ogg file file {random_file_name} ...')
-    signal, fs = audioread_load(random_file_name)
+    signal, _ = audioread_load(random_file_name)
 
     duration = time.time() - start
     app_logger.info(f'Read .ogg file {random_file_name} in {duration}s.')
@@ -86,8 +86,9 @@ def lambda_handler(event, context):
 
     is_letter_correct_all_words = ''
     for idx, word_real in enumerate(words_real):
-        mapped_letters, mapped_letters_indices = wm.get_best_mapped_words(
-            mapped_words[idx], word_real)
+        mapped_letters, _ = wm.get_best_mapped_words(
+            mapped_words[idx], word_real
+        )
 
         is_letter_correct = wm.getWhichLettersWereTranscribedCorrectly(
             word_real, mapped_letters)  # , mapped_letters_indices)
