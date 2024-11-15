@@ -7,6 +7,7 @@ flask_cors
 omegaconf
 ortools==9.11.4210
 pandas
+numpy<2.0.0
 pickle-mixin
 python-dotenv
 requests
