@@ -1,6 +1,7 @@
 import eng_to_ipa
 
 from aip_trainer.models import ModelInterfaces
+from aip_trainer import app_logger
 
 
 class EpitranPhonemConverter(ModelInterfaces.ITextToPhonemModel):
@@ -12,7 +13,10 @@ class EpitranPhonemConverter(ModelInterfaces.ITextToPhonemModel):
         self.epitran_model = epitran_model
 
     def convertToPhonem(self, sentence: str) -> str:
+
+        app_logger.info(f'starting EpitranPhonemConverter.convertToPhonem...')
         phonem_representation = self.epitran_model.transliterate(sentence)
+        app_logger.info(f'EpitranPhonemConverter: got phonem_representation!')
         return phonem_representation
 
 

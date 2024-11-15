@@ -21,15 +21,14 @@ def getTrainer(language: str):
     asr_model = AIModels.NeuralASR(model, decoder)
 
     if language == 'de':
-        phonem_converter = RuleBasedModels.EpitranPhonemConverter(
-            epitran.Epitran('deu-Latn'))
+        epitran_deu_latn = epitran.Epitran('deu-Latn')
+        phonem_converter = RuleBasedModels.EpitranPhonemConverter(epitran_deu_latn)
     elif language == 'en':
         phonem_converter = RuleBasedModels.EngPhonemConverter()
     else:
         raise ValueError('Language not implemented')
 
-    trainer = PronunciationTrainer(
-        asr_model, phonem_converter)
+    trainer = PronunciationTrainer(asr_model, phonem_converter)
 
     return trainer
 
@@ -82,8 +81,8 @@ class PronunciationTrainer:
     def processAudioForGivenText(self, recordedAudio: torch.Tensor = None, real_text=None):
 
         start = time.time()
-        recording_transcript, recording_ipa, word_locations = self.getAudioTranscript(
-            recordedAudio)
+        app_logger.info(f'starting getAudioTranscript...')
+        recording_transcript, recording_ipa, word_locations = self.getAudioTranscript(recordedAudio)
 
         duration = time.time() - start
         app_logger.info(f'Time for NN to transcript audio: {duration}.')
@@ -114,16 +113,19 @@ class PronunciationTrainer:
     def getAudioTranscript(self, recordedAudio: torch.Tensor = None):
         current_recorded_audio = recordedAudio
 
-        current_recorded_audio = self.preprocessAudio(
-            current_recorded_audio)
+        app_logger.info(f'starting preprocessAudio...')
+        current_recorded_audio = self.preprocessAudio(current_recorded_audio)
 
+        app_logger.info(f'starting processAudio...')
         self.asr_model.processAudio(current_recorded_audio)
 
+        app_logger.info(f'starting getTranscriptAndWordsLocations...')
         current_recorded_transcript, current_recorded_word_locations = self.getTranscriptAndWordsLocations(
             current_recorded_audio.shape[1])
-        current_recorded_ipa = self.ipa_converter.convertToPhonem(
-            current_recorded_transcript)
+        app_logger.info(f'starting convertToPhonem...')
+        current_recorded_ipa = self.ipa_converter.convertToPhonem(current_recorded_transcript)
 
+        app_logger.info(f'ok, return audio transcript!')
         return current_recorded_transcript, current_recorded_ipa, current_recorded_word_locations
 
     def getWordLocationsFromRecordInSeconds(self, word_locations, mapped_words_indices) -> list:

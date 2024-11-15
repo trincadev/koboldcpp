@@ -60,8 +60,10 @@ def lambda_handler(event, context):
     duration = time.time() - start
     app_logger.info(f'Loaded .ogg file {random_file_name} in {duration}s.')
 
-    result = trainer_SST_lambda[language].processAudioForGivenText(
-        signal, real_text)
+    language_trainer_sst_lambda = trainer_SST_lambda[language]
+    app_logger.info(f'language_trainer_sst_lambda: preparing...')
+    result = language_trainer_sst_lambda.processAudioForGivenText(signal, real_text)
+    app_logger.info(f'language_trainer_sst_lambda: result: {result}...')
 
     start = time.time()
     os.remove(random_file_name)
