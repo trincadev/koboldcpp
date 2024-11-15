@@ -127,9 +127,9 @@ a.disabled {
 	display: block;
 	position: absolute;
 	left: 2%;
-	top: 18%;
+	top: 15%;
 	transform: translate(-0%, -0%);
-	height: 59%;
+	height: 45%;
 	width: 96%;
 	max-width: 96%;
 	background: #ffff;
@@ -138,13 +138,30 @@ a.disabled {
 	box-shadow: 0 0 20px 8px #d0d0d0;
 }
 
+.container2 {
+	display: block;
+	position: absolute;
+	left: 2%;
+	top: 63%;
+	transform: translate(-0%, -0%);
+	height: 30%;
+	width: 96%;
+	max-width: 96%;
+	background: #ffff;
+	overflow: hidden;
+	border-radius: 20px;
+	box-shadow: 0 0 20px 8px #d0d0d0;
+	overflow: scroll;
+    max-height: 30em;
+}
+
 .container-small {
 	position: fixed;
-	left: 68%;
-	top: 79%;
+	left: 73%;
+	top: 95%;
 	transform: translate(-0%, -0%);
-	height: 7%;
-	width: 30%;
+	height: 4%;
+	width: 15%;
 	background: #ffff;
 	overflow: hidden;
 	border-radius: 20px;
@@ -223,8 +240,8 @@ a.disabled {
 
 .mic-button-div {
 	position: fixed;
-	left: 50%;
-	top: 80%
+	left: 60%;
+	top: 5%
 }
 
 /*############### Drop-down ############# */
@@ -345,7 +362,7 @@ a.disabled {
 .credits-icon-div {
 	position: fixed;
 	left: 90.5%;
-	top: 95%;
+	top: 96%;
 	font-size: x-small;
 }
 
@@ -384,9 +401,9 @@ a.disabled {
 		display: block;
 		position: absolute;
 		left: 2%;
-		top: 22%;
+		top: 15%;
 		transform: translate(-0%, -0%);
-		height: 55%;
+		height: 85%;
 		width: 96%;
 		max-width: 96%;
 		background: #ffff;
@@ -394,6 +411,23 @@ a.disabled {
 		border-radius: 20px;
 		box-shadow: 0 0 20px 8px #d0d0d0;
 	}
+
+    .container2 {
+        display: block;
+        position: absolute;
+        left: 2%;
+        top: 63%;
+        transform: translate(-0%, -0%);
+        height: 30%;
+        width: 96%;
+        max-width: 96%;
+        background: #ffff;
+        overflow: hidden;
+        border-radius: 20px;
+        box-shadow: 0 0 20px 8px #d0d0d0;
+        overflow: scroll;
+        max-height: 30em;
+    }
 
 	.icon-text {
 		font-size: 0.8em !important;
@@ -427,7 +461,7 @@ a.disabled {
 	.mic-button-div {
 		position: fixed;
 		left: 40%;
-		top: 80%
+		top: 5%
 	}
 
 	.link-icon-div {

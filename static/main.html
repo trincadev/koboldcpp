@@ -68,6 +68,11 @@
 
         </div>
 
+        <div id="btn-record" class="expanded mic-button-div">
+            <a id="recordAudio" href="javascript:updateRecordingState()" class="round-button-mic disabled"
+                style="color:white; text-align:center; "><i id="recordIcon" class="material-icons icon-text-mic">mic</i>
+            </a>
+        </div>
 
         <div class="container">
 
@@ -116,31 +121,28 @@
                     <span></span>
                 </button>
             </div>
+
         </div>
 
-
-
-
-        <div class="container-small flex expand"
-            style="align-items: center; text-align: center; vertical-align:middle; ">
-            <p id="single_word_ipa_pair" class="expand ipa-text-small"
-                style="text-align: center; vertical-align: middle;">Reference | Spoken
-            </p>
+        <div class="container2">
+            <div id="div-field-filter-samples" style="position: absolute; width: 97%; margin: 1em;">
+                <input id="field-filter-samples" type="search" class="form-control" placeholder="Write and press enter to filter">
+                <div id="field-samples">{}</div>
+            </div>
         </div>
-
-
-        <div id="btn-record" class="expanded mic-button-div">
-            <a id="recordAudio" href="javascript:updateRecordingState()" class="round-button-mic disabled"
-                style="color:white; text-align:center; "><i id="recordIcon" class="material-icons icon-text-mic">mic</i>
-            </a>
-        </div>
-
 
         <div id="radio-difficulty" class="radio" style="position: fixed; top: 95%; left: 2%;">
             <input label="Random" type="radio" id="lengthCat1" name='length' onclick="javascript:getNextSample()">
             <input label="Easy" type="radio" id="lengthCat2" name='length' checked onclick="javascript:getNextSample()">
             <input label="Medium" type="radio" id="lengthCat3" name='length' onclick="javascript:getNextSample()">
             <input label="Hard" type="radio" id="lengthCat4" name='length' onclick="javascript:getNextSample()">
+        </div>
+
+        <div class="container-small flex expand"
+            style="align-items: center; text-align: center; vertical-align:middle; ">
+            <p id="single_word_ipa_pair" class="expand ipa-text-small"
+                style="text-align: center; vertical-align: middle;">Reference | Spoken
+            </p>
         </div>
 
     </div>
