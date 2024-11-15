@@ -18,6 +18,8 @@
 
 ### OSX ###
 *.DS_Store
+*/*.DS_Store
+*/**/*.DS_Store
 .AppleDouble
 .LSOverride
 
@@ -138,6 +140,7 @@ celerybeat-schedule.*
 .env
 .env*
 .venv
+.venv*
 env/
 venv/
 ENV/
