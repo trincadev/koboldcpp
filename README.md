@@ -39,6 +39,15 @@ pnpm playwright test
 - `aip_trainer.models.AllModels.NeuralTTS`
 - `aip_trainer.models.AllModels.NeuralTranslator`
 
+### Security implication of using pytorch v1.13.1
+
+Pytorch versions prior to 2.2.0 are known to have security vulnerabilities:
+
+- https://security.snyk.io/vuln/SNYK-PYTHON-TORCH-6619806
+- https://security.snyk.io/vuln/SNYK-PYTHON-TORCH-6649934
+
+For this reason, it's best to use this project only in a local environment.
+
 ### TODO
 
 - add more e2e tests with playwright
