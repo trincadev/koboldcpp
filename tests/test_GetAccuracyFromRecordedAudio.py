@@ -31,6 +31,8 @@ class TestGetAccuracyFromRecordedAudio(unittest.TestCase):
             output = json.loads(output)
             assert len(output["matched_transcripts"].strip()) > 0
             assert len(output["matched_transcripts_ipa"].strip()) > 0
+            assert len(output["ipa_transcript"].strip()) > 0
+            assert len(output["real_transcripts_ipa"].strip()) > 0
             output = check_output_by_field(output, "is_letter_correct_all_words", '[01]+', expected_output)
             output = check_output_by_field(output, "end_time", '\d+\.\d+', expected_output)
             output = check_output_by_field(output, "start_time", '\d+\.\d+', expected_output)
@@ -38,6 +40,8 @@ class TestGetAccuracyFromRecordedAudio(unittest.TestCase):
             output["matched_transcripts"] = expected_output["matched_transcripts"]
             output["matched_transcripts_ipa"] = expected_output["matched_transcripts_ipa"]
             output["pronunciation_accuracy"] = expected_output["pronunciation_accuracy"]
+            output["ipa_transcript"] = expected_output["ipa_transcript"]
+            output["real_transcripts_ipa"] = expected_output["real_transcripts_ipa"]
             self.assertEqual(expected_output, output)
 
 

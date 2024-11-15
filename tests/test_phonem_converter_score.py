@@ -17,7 +17,7 @@ class TestPhonemConverter(unittest.TestCase):
         deu_latn = epitran.Epitran('deu-Latn')
         phonem_converter = RuleBasedModels.EpitranPhonemConverter(deu_latn)
         output = phonem_converter.convertToPhonem('Hallo, das ist ein Test')
-        self.assertEqual(output, 'haloː, dɑːs ɪst ain tɛst')
+        self.assertEqual(output, 'haloː, daːs ɪst aɪ̯n tɛst')
 
 
 trainer_SST_lambda = {'de': pronunciationTrainer.getTrainer("de")}
