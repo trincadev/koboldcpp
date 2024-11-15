@@ -63,13 +63,16 @@ Build the docker image this way:
 docker stop $(docker ps -a -q); docker rm $(docker ps -a -q)
 
 # build the base docker image
-docker build . --progress=plain --tag aip_trainer
+docker build . -f dockerfiles/dockerfile-base --progress=plain -t registry.gitlab.com/aletrn/ai-pronunciation-trainer:0.5.0
+
+# build the final docker image
+docker build . --progress=plain --name 
 ```
 
 Run the container (keep it on background) and show logs
 
 ```bash
-docker run -d -p 3000:3000 --name aip_trainer aip_trainer;docker logs -f aip_trainer
+docker run -d -p 3000:3000 --name aip-trainer aip-trainer;docker logs -f aip-trainer
 ```
 
 ## Online version
