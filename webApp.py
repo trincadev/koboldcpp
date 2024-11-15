@@ -1,8 +1,9 @@
 import json
+import os
 import webbrowser
 
-from aip_trainer import PROJECT_ROOT_FOLDER, app_logger
-from flask import Flask, render_template, request, Response
+from aip_trainer import app_logger
+from flask import Flask, render_template, request
 from flask_cors import CORS
 
 from aip_trainer.lambdas import lambdaGetSample
@@ -30,6 +31,7 @@ def getNext():
 @app.route(rootPath+'/GetAccuracyFromRecordedAudio', methods=['POST'])
 def GetAccuracyFromRecordedAudio():
     try:
+        # todo: inserire 
         event = {'body': json.dumps(request.get_json(force=True))}
         lambda_correct_output = lambdaSpeechToScore.lambda_handler(event, [])
         return lambda_correct_output
@@ -41,6 +43,9 @@ def GetAccuracyFromRecordedAudio():
 
 
 if __name__ == "__main__":
-    language = 'de'
-    webbrowser.open_new('http://127.0.0.1:3000/')
+    is_docker_container = os.getenv("IS_DOCKER_CONTAINER", "").lower() == "yes"
+    app_logger.info(f"is_docker_container:{is_docker_container}.")
+    if not is_docker_container:
+        import webbrowser
+        webbrowser.open_new('http://127.0.0.1:3000/')
     app.run(host="0.0.0.0", port=3000)  # , debug=True)

@@ -113,19 +113,19 @@ class PronunciationTrainer:
     def getAudioTranscript(self, recordedAudio: torch.Tensor = None):
         current_recorded_audio = recordedAudio
 
-        app_logger.info(f'starting preprocessAudio...')
+        app_logger.info('starting preprocessAudio...')
         current_recorded_audio = self.preprocessAudio(current_recorded_audio)
 
-        app_logger.info(f'starting processAudio...')
+        app_logger.info('starting processAudio...')
         self.asr_model.processAudio(current_recorded_audio)
 
-        app_logger.info(f'starting getTranscriptAndWordsLocations...')
+        app_logger.info('starting getTranscriptAndWordsLocations...')
         current_recorded_transcript, current_recorded_word_locations = self.getTranscriptAndWordsLocations(
             current_recorded_audio.shape[1])
-        app_logger.info(f'starting convertToPhonem...')
+        app_logger.info('starting convertToPhonem...')
         current_recorded_ipa = self.ipa_converter.convertToPhonem(current_recorded_transcript)
 
-        app_logger.info(f'ok, return audio transcript!')
+        app_logger.info('ok, return audio transcript!')
         return current_recorded_transcript, current_recorded_ipa, current_recorded_word_locations
 
     def getWordLocationsFromRecordInSeconds(self, word_locations, mapped_words_indices) -> list:
