@@ -20,7 +20,8 @@ You should be able to run it locally without any major issues as long as you’r
 
 ## Changes on [trincadev's](https://github.com/trincadev/) [repository](https://github.com/trincadev/ai-pronunciation-trainer)
 
-I upgraded the frontend (jquery@3.7.1, bootstrap@5.3.3) and backend (pytorch==2.2.2, torchaudio==2.2.2) libraries. Should work also with pytorch > 2.2.2, but right now I can't try it on macOS intel.
+I upgraded the frontend (jquery@3.7.1, bootstrap@5.3.3) and backend (pytorch==2.5.1, torchaudio==2.5.1) libraries. On macOS intel it's possible to install from [pypi.org](https://pypi.org/project/torch/) only until the library version [2.2.2](https://pypi.org/project/torch/2.2.2/)
+(see [this github issue](https://github.com/instructlab/instructlab/issues/1469) and [this deprecation notice](https://dev-discuss.pytorch.org/t/pytorch-macos-x86-builds-deprecation-starting-january-2024/1690)).
 
 ### E2E tests with playwright
 
@@ -47,11 +48,29 @@ pnpm playwright test
 
 ### TODO
 
-- add more e2e tests with playwright
+- add an updated online version on HuggingFace, Cloudflare or AWS
 - move from pytorch to onnxruntime (if possible)
 - refactor frontend with something more modern (e.g. vuejs)
 - refactor css style with tailwindcss
-- add an updated online version on Cloudflare or AWS
+- add more e2e tests with playwright
+
+## Docker version
+
+Build the docker image this way:
+
+```bash
+# clean any old active containers
+docker stop $(docker ps -a -q); docker rm $(docker ps -a -q)
+
+# build the base docker image
+docker build . --progress=plain --tag aip_trainer
+```
+
+Run the container (keep it on background) and show logs
+
+```bash
+docker run -d -p 3000:3000 --name aip_trainer aip_trainer;docker logs -f aip_trainer
+```
 
 ## Online version
 
