@@ -1,10 +1,8 @@
-# -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.13.1
 torchaudio==0.13.1
 soundfile==0.12.1
 omegaconf
 epitran==1.25.1
-epitran
 audioread
 requests
 dtwalign
@@ -17,6 +15,5 @@ sqlalchemy
 transformers
 sentencepiece
 ortools==9.11.4210
-ortools
 structlog
 python-dotenv
