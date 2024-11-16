@@ -2,7 +2,7 @@ import json
 import os
 import webbrowser
 
-from aip_trainer import app_logger
+from aip_trainer import app_logger, log_level
 from flask import Flask, render_template, request
 from flask_cors import CORS
 
@@ -44,7 +44,8 @@ def GetAccuracyFromRecordedAudio():
 if __name__ == "__main__":
     is_docker_container = os.getenv("IS_DOCKER_CONTAINER", "").lower() == "yes"
     app_logger.info(f"is_docker_container:{is_docker_container}.")
+    hostname = "127.0.0.1" if is_docker_container else "0.0.0.0"
     if not is_docker_container:
         import webbrowser
         webbrowser.open_new('http://127.0.0.1:3000/')
-    app.run(host="0.0.0.0", port=3000)  # , debug=True)
+    app.run(host=hostname, port=3000, debug=log_level=="DEBUG")
