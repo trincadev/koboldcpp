@@ -1,6 +1,8 @@
+
 import base64
 import json
 import os
+from pathlib import Path
 import tempfile
 import time
 
@@ -25,8 +27,9 @@ def lambda_handler(event, context):
     data = json.loads(event['body'])
 
     real_text = data['title']
-    file_bytes = base64.b64decode(
-        data['base64Audio'][22:].encode('utf-8'))
+    base64Audio = data["base64Audio"]
+    app_logger.debug(f"base64Audio:{base64Audio} ...")
+    file_bytes_or_audiotmpfile = base64.b64decode(base64Audio[22:].encode('utf-8'))
     language = data['language']
 
     if len(real_text) == 0:
@@ -40,13 +43,26 @@ def lambda_handler(event, context):
             },
             'body': ''
         }
+    output = get_speech_to_score(real_text=real_text, file_bytes_or_audiotmpfile=file_bytes_or_audiotmpfile, language=language)
+    app_logger.debug(f"output: {output} ...")
+    return output
 
+
+def get_speech_to_score(real_text: str, file_bytes_or_audiotmpfile: str | dict, language: str = "en", remove_random_file: bool = True):
+    app_logger.info(f"real_text:{real_text} ...")
+    app_logger.debug(f"file_bytes:{file_bytes_or_audiotmpfile} ...")
+    app_logger.info(f"language:{language} ...")
     start0 = time.time()
-    with tempfile.NamedTemporaryFile(prefix="temp_sound_speech_score_", suffix=".ogg", delete=False) as f1:
-        f1.write(file_bytes)
-        duration = time.time() - start0
-        app_logger.info(f'Saved binary in file in {duration}s.')
-        random_file_name = f1.name
+
+    random_file_name = file_bytes_or_audiotmpfile
+    app_logger.debug(f"random_file_name:{random_file_name} ...")
+    if isinstance(file_bytes_or_audiotmpfile, (bytes, bytearray)):
+        app_logger.debug("writing streaming data to file on disk...")
+        with tempfile.NamedTemporaryFile(prefix="temp_sound_speech_score_", suffix=".ogg", delete=False) as f1:
+            f1.write(file_bytes_or_audiotmpfile)
+            duration = time.time() - start0
+            app_logger.info(f'Saved binary data in file in {duration}s.')
+            random_file_name = f1.name
 
     start = time.time()
     app_logger.info(f'Loading .ogg file file {random_file_name} ...')
@@ -66,7 +82,8 @@ def lambda_handler(event, context):
     app_logger.info(f'language_trainer_sst_lambda: result: {result}...')
 
     start = time.time()
-    os.remove(random_file_name)
+    if remove_random_file:
+        os.remove(random_file_name)
     duration = time.time() - start
     app_logger.info(f'Deleted file {random_file_name} in {duration}s.')
 
@@ -127,6 +144,8 @@ def audioread_load(path, offset=0.0, duration=None, dtype=np.float32):
     This loads one block at a time, and then concatenates the results.
     """
 
+    import shutil
+    shutil.copyfile(path, Path("/tmp") / f"test_en_{Path(path).name}")
     y = []
     app_logger.debug(f"reading audio file at path:{path} ...")
     with audioread.audio_open(path) as input_file:
