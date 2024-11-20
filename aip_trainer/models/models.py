@@ -8,64 +8,65 @@ from silero.utils import Decoder
 from aip_trainer import app_logger
 
 
-def silero_tts(language='en',
-               speaker='kseniya_16khz',
-               **kwargs):
-    """ Silero Text-To-Speech Models
+default_speaker_dict = {
+    "de": {"speaker": "karlsson", "model_id": "v3_de", "sample_rate": 48000},
+    "en": {"speaker": "en_0", "model_id": "v3_en", "sample_rate": 48000},
+}
+
+
+def silero_tts(
+    language="en", version="latest", output_folder: Path | str = None, **kwargs
+):
+    """Silero Text-To-Speech Models
     language (str): language of the model, now available are ['ru', 'en', 'de', 'es', 'fr']
     Returns a model and a set of utils
     Please see https://github.com/snakers4/silero-models for usage examples
     """
-    from omegaconf import OmegaConf
-    from silero.tts_utils import apply_tts
-    from silero.tts_utils import init_jit_model as init_jit_model_tts
+    output_folder = Path(output_folder)
+    current_model_lang = default_speaker_dict[language]
+    app_logger.info(f"model speaker current_model_lang: {current_model_lang} ...")
+    if language in default_speaker_dict:
+        model_id = current_model_lang["model_id"]
 
-    models_list_file = os.path.join(os.path.dirname(__file__), "..", "..", "models.yml")
-    if not os.path.exists(models_list_file):
-        models_list_file = 'latest_silero_models.yml'
-    if not os.path.exists(models_list_file):
-        torch.hub.download_url_to_file('https://raw.githubusercontent.com/snakers4/silero-models/master/models.yml',
-                                    'latest_silero_models.yml',
-                                    progress=False)
-    assert os.path.exists(models_list_file)
-    models = OmegaConf.load(models_list_file)
+    models = get_models(language, output_folder, version, model_type="tts_models")
     available_languages = list(models.tts_models.keys())
-    assert language in available_languages, f'Language not in the supported list {available_languages}'
-    available_speakers = []
-    speaker_language = {}
-    for lang in available_languages:
-        speakers = list(models.tts_models.get(lang).keys())
-        available_speakers.extend(speakers)
-        for _ in speakers:
-            speaker_language[_] = lang
-    assert speaker in available_speakers, f'Speaker not in the supported list {available_speakers}'
-    assert language == speaker_language[speaker], f"Incorrect language '{language}' for this speaker, please specify '{speaker_language[speaker]}'"
+    assert (
+        language in available_languages
+    ), f"Language not in the supported list {available_languages}"
 
-    model_conf = models.tts_models[language][speaker].latest
-    if '_v2' in speaker or '_v3' in speaker or 'v3_' in speaker or 'v4_' in speaker:
+    tts_models_lang = models.tts_models[language]
+    model_conf = tts_models_lang[model_id]
+    model_conf_latest = model_conf[version]
+    app_logger.info(f"model_conf: {model_conf_latest} ...")
+    if "_v2" in model_id or "_v3" in model_id or "v3_" in model_id or "v4_" in model_id:
         from torch import package
-        model_url = model_conf.package
-        model_dir = os.path.join(os.path.dirname(__file__), "model")
+
+        model_url = model_conf_latest.package
+        model_dir = output_folder / "model"
         os.makedirs(model_dir, exist_ok=True)
-        model_path = os.path.join(model_dir, os.path.basename(model_url))
+        model_path = output_folder / os.path.basename(model_url)
         if not os.path.isfile(model_path):
-            torch.hub.download_url_to_file(model_url,
-                                           model_path,
-                                           progress=True)
+            torch.hub.download_url_to_file(model_url, model_path, progress=True)
         imp = package.PackageImporter(model_path)
         model = imp.load_pickle("tts_models", "model")
-        if speaker == 'multi_v2':
-            avail_speakers = model_conf.speakers
-            return model, avail_speakers
-        else:
-            example_text = model_conf.example
-            return model, example_text
+        app_logger.info(
+            f"current model_conf_latest.sample_rate:{model_conf_latest.sample_rate} ..."
+        )
+        sample_rate = current_model_lang["sample_rate"]
+        return (
+            model,
+            model_conf_latest.example,
+            current_model_lang["speaker"],
+            sample_rate,
+        )
     else:
-        model = init_jit_model_tts(model_conf.jit)
-        symbols = model_conf.tokenset
-        example_text = model_conf.example
-        sample_rate = model_conf.sample_rate
-        return model, symbols, sample_rate, example_text, apply_tts
+        from silero.tts_utils import apply_tts, init_jit_model as init_jit_model_tts
+
+        model = init_jit_model_tts(model_conf_latest.jit)
+        symbols = model_conf_latest.tokenset
+        example_text = model_conf_latest.example
+        sample_rate = model_conf_latest.sample_rate
+        return model, symbols, sample_rate, example_text, apply_tts, model_id
 
 
 def silero_stt(
@@ -74,7 +75,7 @@ def silero_stt(
     jit_model="jit",
     output_folder: Path | str = None,
     **kwargs,
-    ):
+):
     """Modified Silero Speech-To-Text Model(s) function
     language (str): language of the model, now available are ['en', 'de', 'es']
     version:
@@ -83,8 +84,6 @@ def silero_stt(
     Returns a model, decoder object and a set of utils
     Please see https://github.com/snakers4/silero-models for usage examples
     """
-    import torch
-    from omegaconf import OmegaConf
     from silero.utils import (
         read_audio,
         read_batch,
@@ -92,31 +91,13 @@ def silero_stt(
         prepare_model_input,
     )
 
-    output_folder = (
-        Path(output_folder)
-        if output_folder is not None
-        else Path(os.path.dirname(__file__)) / ".." / ".."
-    )
-    models_list_file = output_folder / f"latest_silero_model_{language}.yml"
-    if not os.path.exists(models_list_file):
-        app_logger.info(
-            f"model yml for '{language}' language, '{version}' version not found, download it in folder {output_folder}..."
-        )
-        torch.hub.download_url_to_file(
-            "https://raw.githubusercontent.com/snakers4/silero-models/master/models.yml",
-            models_list_file,
-            progress=True,
-        )
-    app_logger.info(
-        f"model yml for '{language}' language, '{version}' version in folder {output_folder}: OK!"
-    )
-    assert os.path.exists(models_list_file)
-    models = OmegaConf.load(models_list_file)
-    available_languages = list(models.stt_models.keys())
-    assert language in available_languages
-
-    model, decoder = init_jit_model(
-        model_url=models.stt_models.get(language).get(version).get(jit_model), output_folder=output_folder, **kwargs
+    model, decoder = get_latest_model(
+        language,
+        output_folder,
+        version,
+        model_type="stt_models",
+        jit_model=jit_model,
+        **kwargs,
     )
     utils = (read_batch, split_into_batches, read_audio, prepare_model_input)
 
@@ -127,7 +108,7 @@ def init_jit_model(
     model_url: str,
     device: torch.device = torch.device("cpu"),
     output_folder: Path | str = None,
-    ):
+):
     torch.set_grad_enabled(False)
 
     app_logger.info(
@@ -145,13 +126,9 @@ def init_jit_model(
     )
 
     if not os.path.isfile(model_path):
-        app_logger.info(
-            f"downloading model_path: '{model_path}' ..."
-        )
+        app_logger.info(f"downloading model_path: '{model_path}' ...")
         torch.hub.download_url_to_file(model_url, model_path, progress=True)
-    app_logger.info(
-        f"model_path {model_path} downloaded!"
-    )
+    app_logger.info(f"model_path {model_path} downloaded!")
     model = torch.jit.load(model_path, map_location=device)
     model.eval()
     return model, Decoder(model.labels)
@@ -173,4 +150,39 @@ def getASRModel(language: str) -> tuple[nn.Module, Decoder]:
             )
         )
 
+    return model, decoder
+
+
+def get_models(language, output_folder, version, model_type):
+    from omegaconf import OmegaConf
+
+    output_folder = (
+        Path(output_folder)
+        if output_folder is not None
+        else Path(os.path.dirname(__file__)) / ".." / ".."
+    )
+    models_list_file = output_folder / f"latest_silero_model_{language}.yml"
+    if not os.path.exists(models_list_file):
+        app_logger.info(
+            f"model {model_type} yml for '{language}' language, '{version}' version not found, download it in folder {output_folder}..."
+        )
+        torch.hub.download_url_to_file(
+            "https://raw.githubusercontent.com/snakers4/silero-models/master/models.yml",
+            models_list_file,
+            progress=False,
+        )
+    assert os.path.exists(models_list_file)
+    return OmegaConf.load(models_list_file)
+
+
+def get_latest_model(language, output_folder, version, model_type, jit_model, **kwargs):
+    models = get_models(language, output_folder, version, model_type)
+    available_languages = list(models[model_type].keys())
+    assert language in available_languages
+
+    model, decoder = init_jit_model(
+        model_url=models[model_type].get(language).get(version).get(jit_model),
+        output_folder=output_folder,
+        **kwargs,
+    )
     return model, decoder

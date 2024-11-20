@@ -1,7 +1,7 @@
 import gradio as gr
 
 from aip_trainer import app_logger
-from aip_trainer.lambdas import lambdaSpeechToScore
+from aip_trainer.lambdas import lambdaSpeechToScore, lambdaTTS
 
 
 js = """
@@ -55,6 +55,14 @@ with gr.Blocks() as gradio_app:
                     label="Learner Recording",
                     sources=["microphone", "upload"],
                     type="filepath",
+                )
+            with gr.Row():
+                tts = gr.Audio(label="tts")
+                btn = gr.Button(value="TTS")
+                btn.click(
+                    fn=lambdaTTS.get_tts,
+                    inputs=[learner_transcription, language],
+                    outputs=tts,
                 )
         with gr.Column(scale=3, min_width=300):
             transcripted_text = gr.Textbox(
