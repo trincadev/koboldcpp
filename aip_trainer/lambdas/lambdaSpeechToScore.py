@@ -53,6 +53,14 @@ def get_speech_to_score_dict(real_text: str, file_bytes_or_audiotmpfile: str | d
     app_logger.info(f"real_text:{real_text} ...")
     app_logger.debug(f"file_bytes:{file_bytes_or_audiotmpfile} ...")
     app_logger.info(f"language:{language} ...")
+
+    if real_text is None or len(real_text) == 0:
+        raise ValueError(f"cannot read an empty/None text: '{real_text}'...")
+    if language is None or len(language) == 0:
+        raise NotImplementedError(f"Not tested/supported with '{language}' language...")
+    if file_bytes_or_audiotmpfile is None or len(file_bytes_or_audiotmpfile) == 0 or os.path.getsize(file_bytes_or_audiotmpfile) == 0:
+        raise ValueError(f"cannot read an empty/None file: '{file_bytes_or_audiotmpfile}'...")
+
     start0 = time.time()
 
     random_file_name = file_bytes_or_audiotmpfile
