@@ -64,6 +64,13 @@ with gr.Blocks() as gradio_app:
                     inputs=[learner_transcription, language],
                     outputs=tts,
                 )
+            gr.Examples(
+                examples=[
+                    ["Hi there, how are you?", "en"],
+                    ["Hallo, wie geht es dir?", "de"],
+                ],
+                inputs=[learner_transcription, language],
+            )
         with gr.Column(scale=3, min_width=300):
             transcripted_text = gr.Textbox(
                 lines=2, placeholder=None, label="Transcripted text", visible=False
