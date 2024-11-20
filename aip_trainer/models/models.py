@@ -9,8 +9,8 @@ from aip_trainer import app_logger
 
 
 default_speaker_dict = {
-    "de": {"speaker": "karlsson", "model_id": "v3_de", "sample_rate": 48000},
-    "en": {"speaker": "en_0", "model_id": "v3_en", "sample_rate": 48000},
+    "de": {"speaker": "karlsson", "model_id": "v3_de", "sample_rate": 24000},
+    "en": {"speaker": "en_0", "model_id": "v3_en", "sample_rate": 24000},
 }
 
 
