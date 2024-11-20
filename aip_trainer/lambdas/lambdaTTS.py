@@ -5,7 +5,7 @@ from pathlib import Path
 from aip_trainer import app_logger
 
 
-def get_tts(text: str, language: str):
+def get_tts(text: str, language: str, tmp_prefix="audio_", tmp_suffix=".wav") -> str:
     from aip_trainer.models import models
 
     if text is None or len(text) == 0:
@@ -24,7 +24,7 @@ def get_tts(text: str, language: str):
         )
     app_logger.info(f"model speaker #0: {speaker} ...")
 
-    with tempfile.NamedTemporaryFile(prefix="audio_", suffix=".wav", delete=False) as tmp_audio_file:
+    with tempfile.NamedTemporaryFile(prefix=tmp_prefix, suffix=tmp_suffix, delete=False) as tmp_audio_file:
         app_logger.info(f"tmp_audio_file output: {tmp_audio_file.name} ...")
         audio_paths = model.save_wav(text=text, speaker=speaker, sample_rate=sample_rate, audio_path=str(tmp_audio_file.name))
         app_logger.info(f"audio_paths output: {audio_paths} ...")
