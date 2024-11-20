@@ -43,12 +43,13 @@ def lambda_handler(event, context):
             },
             'body': ''
         }
-    output = get_speech_to_score(real_text=real_text, file_bytes_or_audiotmpfile=file_bytes_or_audiotmpfile, language=language)
+    output = get_speech_to_score_dict(real_text=real_text, file_bytes_or_audiotmpfile=file_bytes_or_audiotmpfile, language=language, remove_random_file=False)
+    output = json.dumps(output)
     app_logger.debug(f"output: {output} ...")
     return output
 
 
-def get_speech_to_score(real_text: str, file_bytes_or_audiotmpfile: str | dict, language: str = "en", remove_random_file: bool = True):
+def get_speech_to_score_dict(real_text: str, file_bytes_or_audiotmpfile: str | dict, language: str = "en", remove_random_file: bool = True):
     app_logger.info(f"real_text:{real_text} ...")
     app_logger.debug(f"file_bytes:{file_bytes_or_audiotmpfile} ...")
     app_logger.info(f"language:{language} ...")
@@ -118,10 +119,12 @@ def get_speech_to_score(real_text: str, file_bytes_or_audiotmpfile: str | dict, 
     duration = time.time() - start
     duration_tot = time.time() - start0
     app_logger.info(f'Time to post-process results: {duration}, tot_duration:{duration_tot}.')
+    pronunciation_accuracy = str(int(result['pronunciation_accuracy']))
+    ipa_transcript = result['recording_ipa']
 
-    res = {'real_transcript': result['recording_transcript'],
-           'ipa_transcript': result['recording_ipa'],
-           'pronunciation_accuracy': str(int(result['pronunciation_accuracy'])),
+    return {'real_transcript': result['recording_transcript'],
+           'ipa_transcript': ipa_transcript,
+           'pronunciation_accuracy': pronunciation_accuracy,
            'real_transcripts': real_transcripts, 'matched_transcripts': matched_transcripts,
            'real_transcripts_ipa': real_transcripts_ipa, 'matched_transcripts_ipa': matched_transcripts_ipa,
            'pair_accuracy_category': pair_accuracy_category,
@@ -129,7 +132,15 @@ def get_speech_to_score(real_text: str, file_bytes_or_audiotmpfile: str | dict, 
            'end_time': result['end_time'],
            'is_letter_correct_all_words': is_letter_correct_all_words}
 
-    return json.dumps(res)
+
+def get_speech_to_score_tuple(real_text: str, file_bytes_or_audiotmpfile: str | dict, language: str = "en", remove_random_file: bool = True):
+    output = get_speech_to_score_dict(real_text=real_text, file_bytes_or_audiotmpfile=file_bytes_or_audiotmpfile, language=language, remove_random_file=remove_random_file)
+    real_transcripts = output['real_transcripts']
+    is_letter_correct_all_words = output['is_letter_correct_all_words']
+    pronunciation_accuracy = output['pronunciation_accuracy']
+    ipa_transcript = output['ipa_transcript']
+    real_transcripts_ipa = output['real_transcripts_ipa']
+    return real_transcripts, is_letter_correct_all_words, pronunciation_accuracy, ipa_transcript, real_transcripts_ipa, json.dumps(output)
 
 
 # From Librosa

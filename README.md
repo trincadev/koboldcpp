@@ -3,7 +3,9 @@ title: AI Pronunciation Trainer
 emoji: 🎤
 colorFrom: red
 colorTo: blue
-sdk: docker
+sdk: gradio
+sdk_version: 5.6.0
+app_file: app.py
 pinned: false
 license: mit
 ---
@@ -59,7 +61,8 @@ pnpm playwright test
 
 - add an updated online version on HuggingFace, Cloudflare or AWS
 - move from pytorch to onnxruntime (if possible)
-- refactor frontend with something more modern (e.g. vuejs)
+- refactor frontend with something more modern (e.g. vuejs, gradio)
+- improve documentation, backend tests
 - refactor css style with tailwindcss
 - add more e2e tests with playwright
 

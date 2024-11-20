@@ -86,7 +86,7 @@ class TestGetAccuracyFromRecordedAudio(unittest.TestCase):
 
         language = "en"
         path = EVENTS_FOLDER / f"test_{language}.wav"
-        output = lambdaSpeechToScore.get_speech_to_score(
+        output = lambdaSpeechToScore.get_speech_to_score_dict(
             real_text=text_dict[language],
             file_bytes_or_audiotmpfile=path,
             language=language,
@@ -105,14 +105,14 @@ class TestGetAccuracyFromRecordedAudio(unittest.TestCase):
             "end_time": "0.559875 1.658125 1.14825 1.344375 1.658125",
             "is_letter_correct_all_words": "11 000001 111 111 1111 ",
         }
-        check_output(self, json.loads(output), expected_output)
+        check_output(self, output, expected_output)
 
     def test_get_speech_to_score_de_ok(self):
         from aip_trainer.lambdas import lambdaSpeechToScore
 
         language = "de"
         path = EVENTS_FOLDER / f"test_{language}.wav"
-        output = lambdaSpeechToScore.get_speech_to_score(
+        output = lambdaSpeechToScore.get_speech_to_score_dict(
             real_text=text_dict[language],
             file_bytes_or_audiotmpfile=path,
             language=language,
@@ -131,7 +131,7 @@ class TestGetAccuracyFromRecordedAudio(unittest.TestCase):
             "end_time": "0.328 0.6458125 1.44025 2.4730625 2.15525 2.4730625",
             "is_letter_correct_all_words": "111 111 11111 000 1011 111 ",
         }
-        check_output(self, json.loads(output), expected_output)
+        check_output(self, output, expected_output)
 
 
 if __name__ == "__main__":
