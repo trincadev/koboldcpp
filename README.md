@@ -56,14 +56,13 @@ pnpm playwright test
 - upgrade jquery>3.x
 - upgrade pytorch>2.x
 - e2e playwright tests
+- add an updated online version (HuggingFace)
+- refactor frontend moving from jquery to gradio
 
 ### TODO
 
-- add an updated online version on HuggingFace, Cloudflare or AWS
+- improve documentation (especially function docstrings), backend tests
 - move from pytorch to onnxruntime (if possible)
-- refactor frontend with something more modern (e.g. vuejs, gradio)
-- improve documentation, backend tests
-- refactor css style with tailwindcss
 - add more e2e tests with playwright
 
 ## Docker version
