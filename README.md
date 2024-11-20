@@ -17,22 +17,32 @@ You can try my [refactored version](https://github.com/trincadev/ai-pronunciatio
 
 [![<https://aletrn-ai-pronunciation-trainer.hf.space/>](images/MainScreen.png)](https://aletrn-ai-pronunciation-trainer.hf.space/)
 
+My [HuggingFace Space](https://huggingface.co/spaces/aletrn/ai-pronunciation-trainer) is a free of charge: for this reason is the less powerful version and the speech recognition could take some seconds.
+
 ## Installation
 
-To run the program locally, you need to install the requirements and run the main python file:
+To run the program locally, you need to install the requirements and run the main python file.
+These commands assume you have an active virtualenv (locally I'm using python 3.12, on HuggingFace the gradio SDK - version 5.6.0 at the moment - uses python 3.10):
 
 ```bash
 pip install -r requirements.txt
 python webApp.py
 ```
 
-You'll also need ffmpeg, which you can download from here <https://ffmpeg.org/download.html>. On Windows, it may be needed to add the ffmpeg "bin" folder to your PATH environment variable. On Mac, you can also just run "brew install ffmpeg".
+On Windows you can also use WSL2 to spin a Linux instance on your installation, then you don't need any particular requirements to work on it.
+You'll also need ffmpeg, which you can download from here <https://ffmpeg.org/download.html>. You can install it on base Windows using the command `winget install ffmpeg`, it may be needed to add the ffmpeg "bin" folder to your PATH environment variable. On Mac, you can also just run "brew install ffmpeg".
 
 You should be able to run it locally without any major issues as long as you’re using a recent python 3.X version.  
 
 ## Changes on [trincadev's](https://github.com/trincadev/) [repository](https://github.com/trincadev/ai-pronunciation-trainer)
 
-I upgraded the frontend (jquery@3.7.1, bootstrap@5.3.3) and backend (pytorch==2.5.1, torchaudio==2.5.1) libraries. On macOS intel it's possible to install from [pypi.org](https://pypi.org/project/torch/) only until the library version [2.2.2](https://pypi.org/project/torch/2.2.2/)
+Currently the best way to exec the project is using the Gradio frontend:
+
+```bash
+python app.py
+```
+
+I upgraded the old custom frontend (jquery@3.7.1, bootstrap@5.3.3) and backend (pytorch==2.5.1, torchaudio==2.5.1) libraries. On macOS intel it's possible to install from [pypi.org](https://pypi.org/project/torch/) only until the library version [2.2.2](https://pypi.org/project/torch/2.2.2/)
 (see [this github issue](https://github.com/instructlab/instructlab/issues/1469) and [this deprecation notice](https://dev-discuss.pytorch.org/t/pytorch-macos-x86-builds-deprecation-starting-january-2024/1690)).
 
 ### E2E tests with playwright
@@ -68,7 +78,7 @@ pnpm playwright test
 
 ## Docker version
 
-Build the docker image this way:
+Build the docker image this way (right now this version uses the old custom frontend with jquery):
 
 ```bash
 # clean any old active containers
@@ -86,12 +96,6 @@ Run the container (keep it on background) and show logs
 ```bash
 docker run -d -p 3000:3000 --name aip-trainer aip-trainer;docker logs -f aip-trainer
 ```
-
-## Online version
-
-For the people who don’t feel comfortable running code or just want to have a quick way to use the tool, I hosted an online version of it at <https://aipronunciationtr.com>. It should work well in desktop-chrome, any other browser is not officially supported, although most of the functionality should work fine.
-
-Please be aware that the usage is limited by day (I’m still not rich ;)). If, for some reason, you would like to avoid the daily usage limit, just enter in contact and we see what we can do.
 
 ## Motivation
 
