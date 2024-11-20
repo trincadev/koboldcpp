@@ -12,9 +12,10 @@ license: mit
 
 # AI Pronunciation Trainer
 
-This tool uses AI to evaluate your pronunciation so you can improve it and be understood more clearly. You can go straight test the tool at <https://aipronunciationtr.com> (please use the chrome browser for desktop and have some patience for it to "warm-up" :) ).
+This repository refactor [Thiagohgl](https://github.com/Thiagohgl)'s [AI Pronunciation Trainer](https://github.com/Thiagohgl/ai-pronunciation-trainer) project, a tool that uses AI to evaluate your pronunciation so you can improve it and be understood more clearly.
+You can try my [refactored version](https://github.com/trincadev/ai-pronunciation-trainer) both locally or online, using my [HuggingFace Space](https://huggingface.co/spaces/aletrn/ai-pronunciation-trainer):
 
-![](images/MainScreen.png)
+[![<https://aletrn-ai-pronunciation-trainer.hf.space/>](images/MainScreen.png)](https://aletrn-ai-pronunciation-trainer.hf.space/)
 
 ## Installation
 
