@@ -29,9 +29,12 @@ function updateCssText(text, letters) {
 """
 
 
-def change_interactivity_components(components, is_active: bool):
-    for component in components:
-        component.interactive = is_active
+def clear():
+    return None
+
+
+def clear2():
+    return None, None
 
 
 with gr.Blocks() as gradio_app:
@@ -72,14 +75,17 @@ with gr.Blocks() as gradio_app:
                     )
             with gr.Row():
                 with gr.Column(scale=7, min_width=240):
-                    tts = gr.Audio(label="Audio TTS")
+                    audio_tts = gr.Audio(label="Audio TTS")
                 with gr.Column(scale=1, min_width=50):
-                    btn_tts = gr.Button(value="Run TTS")
+                    btn_run_tts = gr.Button(value="Run TTS")
+                    btn_clear_tts = gr.Button(value="Clear TTS")
+                    btn_clear_tts.click(clear, inputs=[], outputs=[audio_tts])
             with gr.Row():
-                learner_recording = gr.Audio(
+                audio_learner_recording_stt = gr.Audio(
                     label="Learner Recording",
                     sources=["microphone", "upload"],
                     type="filepath",
+                    show_download_button=True,
                 )
         with gr.Column(scale=4, min_width=320):
             examples_text = gr.Examples(
@@ -124,14 +130,9 @@ with gr.Blocks() as gradio_app:
             )
             with gr.Row():
                 btn = gr.Button(value="Recognize speech accuracy")
-            btn_random_phrase.click(
-                lambdaGetSample.get_random_selection,
-                inputs=[language, difficulty],
-                outputs=[learner_transcription],
-            )
     btn.click(
         lambdaSpeechToScore.get_speech_to_score_tuple,
-        inputs=[learner_transcription, learner_recording, language],
+        inputs=[learner_transcription, audio_learner_recording_stt, language],
         outputs=[
             transcripted_text,
             letter_correctness,
@@ -141,10 +142,20 @@ with gr.Blocks() as gradio_app:
             res,
         ],
     )
-    btn_tts.click(
+    btn_run_tts.click(
         fn=lambdaTTS.get_tts,
         inputs=[learner_transcription, language],
-        outputs=tts,
+        outputs=audio_tts,
+    )
+    btn_random_phrase.click(
+        lambdaGetSample.get_random_selection,
+        inputs=[language, difficulty],
+        outputs=[learner_transcription],
+    )
+    btn_random_phrase.click(
+        clear2,
+        inputs=[],
+        outputs=[audio_learner_recording_stt, audio_tts]
     )
     html_output.change(
         None,
