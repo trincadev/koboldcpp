@@ -12,15 +12,14 @@ import torch
 from torchaudio.transforms import Resample
 
 from aip_trainer import WordMatching as wm, app_logger
-from aip_trainer import pronunciationTrainer
+from aip_trainer import pronunciationTrainer, sample_rate_start
 
 
 trainer_SST_lambda = {
     'de': pronunciationTrainer.getTrainer("de"),
     'en': pronunciationTrainer.getTrainer("en")
 }
-
-transform = Resample(orig_freq=48000, new_freq=16000)
+transform = Resample(orig_freq=sample_rate_start, new_freq=16000)
 
 
 def lambda_handler(event, context):
