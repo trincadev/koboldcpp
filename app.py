@@ -5,6 +5,12 @@ from aip_trainer import PROJECT_ROOT_FOLDER, app_logger, sample_rate_start
 from aip_trainer.lambdas import js, lambdaGetSample, lambdaSpeechToScore, lambdaTTS
 
 
+css = """
+.speech-output-label p {color: grey;}
+.speech-output-container {align-items: center; min-height: 60px; padding-left: 8px; padding-right: 8px; margin-top: -12px; border-width: 1px; border-style: solid; border-color: lightgrey;}
+"""
+
+
 def clear():
     return None
 
@@ -13,7 +19,7 @@ def clear2():
     return None, None
 
 
-with gr.Blocks() as gradio_app:
+with gr.Blocks(css=css) as gradio_app:
     local_storage = gr.BrowserState([0.0, 0.0])
     app_logger.info("start gradio app building...")
 
@@ -62,39 +68,40 @@ with gr.Blocks() as gradio_app:
                 )
         with gr.Column(scale=4, min_width=320):
             text_transcribed_hidden = gr.Textbox(
-                lines=2, placeholder=None, label="Transcribed text", visible=False
+                placeholder=None, label="Transcribed text", visible=False
             )
             text_letter_correctness = gr.Textbox(
-                lines=1,
                 placeholder=None,
                 label="Letters correctness",
                 visible=False,
             )
-            with gr.Row():
-                gr.Markdown("Speech accuracy score (%)")
-            with gr.Row():
-                    with gr.Column(min_width=100):
-                        number_pronunciation_accuracy = gr.Number(label="Current score")
-                    with gr.Column(min_width=100):
-                        number_score_de = gr.Number(label="Global score DE", value=0, interactive=False)
-                    with gr.Column(min_width=100):
-                        number_score_en = gr.Number(label="Global score EN", value=0, interactive=False)
             text_recording_ipa = gr.Textbox(
-                lines=1, placeholder=None, label="Learner phonetic transcription"
+                placeholder=None, label="Learner phonetic transcription"
             )
             text_ideal_ipa = gr.Textbox(
-                lines=1, placeholder=None, label="Ideal phonetic transcription"
+                placeholder=None, label="Ideal phonetic transcription"
             )
-            text_raw_json_output_hidden = gr.Textbox(lines=1, placeholder=None, label="text_raw_json_output_hidden", visible=False)
-            html_output = gr.HTML(
-                label="Speech accuracy output",
-                elem_id="speech-output",
-                show_label=True,
-                visible=True,
-                render=True,
-                value=" - ",
-                elem_classes="speech-output",
-            )
+            text_raw_json_output_hidden = gr.Textbox(placeholder=None, label="text_raw_json_output_hidden", visible=False)
+            gr.Markdown("Speech accuracy output", elem_classes="speech-output-label")
+            with gr.Row(elem_classes="speech-output-container"):
+                html_output = gr.HTML(
+                    label="Speech accuracy output",
+                    elem_id="speech-output",
+                    show_label=True,
+                    visible=True,
+                    render=True,
+                    value=" - ",
+                    elem_classes="speech-output",
+                )
+            with gr.Row():
+                gr.Markdown("### Speech accuracy score (%)", elem_classes="speech-accuracy-score-container row1")
+            with gr.Row():
+                with gr.Column(min_width=100, elem_classes="speech-accuracy-score-container row2 col1"):
+                    number_pronunciation_accuracy = gr.Number(label="Current score")
+                with gr.Column(min_width=100, elem_classes="speech-accuracy-score-container row2 col2"):
+                    number_score_de = gr.Number(label="Global score DE", value=0, interactive=False)
+                with gr.Column(min_width=100, elem_classes="speech-accuracy-score-container row2 col3"):
+                    number_score_en = gr.Number(label="Global score EN", value=0, interactive=False)
             with gr.Row():
                 btn = gr.Button(value="Recognize speech accuracy")
             with gr.Accordion("Click here to expand the table examples", open=False):
