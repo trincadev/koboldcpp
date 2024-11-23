@@ -61,8 +61,8 @@ with gr.Blocks() as gradio_app:
                     show_download_button=True,
                 )
         with gr.Column(scale=4, min_width=320):
-            text_transcripted_hidden = gr.Textbox(
-                lines=2, placeholder=None, label="Transcripted text", visible=False
+            text_transcribed_hidden = gr.Textbox(
+                lines=2, placeholder=None, label="Transcribed text", visible=False
             )
             text_letter_correctness = gr.Textbox(
                 lines=1,
@@ -76,9 +76,9 @@ with gr.Blocks() as gradio_app:
                     with gr.Column(min_width=100):
                         number_pronunciation_accuracy = gr.Number(label="Current score")
                     with gr.Column(min_width=100):
-                        number_score_de = gr.Number(label="Global score DE", value=0)
+                        number_score_de = gr.Number(label="Global score DE", value=0, interactive=False)
                     with gr.Column(min_width=100):
-                        number_score_en = gr.Number(label="Global score EN", value=0)
+                        number_score_en = gr.Number(label="Global score EN", value=0, interactive=False)
             text_recording_ipa = gr.Textbox(
                 lines=1, placeholder=None, label="Learner phonetic transcription"
             )
@@ -111,9 +111,9 @@ with gr.Blocks() as gradio_app:
                 )
 
     def get_updated_score_by_language(text: str, audio_rec: str | Path, lang: str, score_de: float, score_en: float):
-        _transcripted_text, _letter_correctness, _pronunciation_accuracy, _recording_ipa, _ideal_ipa, _res = lambdaSpeechToScore.get_speech_to_score_tuple(text, audio_rec, lang)
+        _transcribed_text, _letter_correctness, _pronunciation_accuracy, _recording_ipa, _ideal_ipa, _res = lambdaSpeechToScore.get_speech_to_score_tuple(text, audio_rec, lang)
         output = {
-            text_transcripted_hidden: _transcripted_text,
+            text_transcribed_hidden: _transcribed_text,
             text_letter_correctness: _letter_correctness,
             number_pronunciation_accuracy: _pronunciation_accuracy,
             text_recording_ipa: _recording_ipa,
@@ -140,7 +140,7 @@ with gr.Blocks() as gradio_app:
         get_updated_score_by_language,
         inputs=[text_learner_transcription, audio_learner_recording_stt, radio_language, number_score_de, number_score_en],
         outputs=[
-            text_transcripted_hidden,
+            text_transcribed_hidden,
             text_letter_correctness,
             number_pronunciation_accuracy,
             text_recording_ipa,
@@ -166,7 +166,7 @@ with gr.Blocks() as gradio_app:
     )
     html_output.change(
         None,
-        inputs=[text_transcripted_hidden, text_letter_correctness],
+        inputs=[text_transcribed_hidden, text_letter_correctness],
         outputs=[html_output],
         js=js.js_update_ipa_output,
     )
