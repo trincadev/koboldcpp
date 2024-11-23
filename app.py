@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import gradio as gr
 
@@ -20,6 +21,9 @@ with gr.Blocks() as gradio_app:
     with open(project_root_folder / "aip_trainer" / "lambdas" / "app_description.md", "r", encoding="utf-8") as app_description_src:
         app_description = app_description_src.read()
         gr.Markdown(app_description)
+    with gr.Row():
+        number_score_de = gr.Number(label="Score DE", value=0.0)
+        number_score_en = gr.Number(label="Score EN", value=0.0)
     with gr.Row():
         with gr.Column(scale=4, min_width=300):
             with gr.Row():
@@ -81,9 +85,7 @@ with gr.Blocks() as gradio_app:
                 label="Letters correctness",
                 visible=False,
             )
-            pronunciation_accuracy = gr.Textbox(
-                lines=1, placeholder=None, label="Pronunciation accuracy %"
-            )
+            pronunciation_accuracy = gr.Number(label="Pronunciation accuracy %")
             recording_ipa = gr.Textbox(
                 lines=1, placeholder=None, label="Learner phonetic transcription"
             )
@@ -102,9 +104,36 @@ with gr.Blocks() as gradio_app:
             )
             with gr.Row():
                 btn = gr.Button(value="Recognize speech accuracy")
+
+    def get_updated_score_by_language(text: str, audio_rec: str | Path, lang: str, score_de: float, score_en: float):
+        _transcripted_text, _letter_correctness, _pronunciation_accuracy, _recording_ipa, _ideal_ipa, _res = lambdaSpeechToScore.get_speech_to_score_tuple(text, audio_rec, lang)
+        output = {
+            transcripted_text: _transcripted_text,
+            letter_correctness: _letter_correctness,
+            pronunciation_accuracy: _pronunciation_accuracy,
+            recording_ipa: _recording_ipa,
+            ideal_ipa: _ideal_ipa,
+            res: _res,
+        }
+        match lang:
+            case "de":
+                return {
+                    number_score_de: float(score_de) + float(_pronunciation_accuracy),
+                    number_score_en: float(score_en),
+                    **output
+                }
+            case "en":
+                return {
+                    number_score_en: float(score_en) + float(_pronunciation_accuracy),
+                    number_score_de: float(score_de),
+                    **output
+                }
+            case _:
+                raise NotImplementedError(f"Language {lang} not supported")
+
     btn.click(
-        lambdaSpeechToScore.get_speech_to_score_tuple,
-        inputs=[learner_transcription, audio_learner_recording_stt, language],
+        get_updated_score_by_language,
+        inputs=[learner_transcription, audio_learner_recording_stt, language, number_score_de, number_score_en],
         outputs=[
             transcripted_text,
             letter_correctness,
@@ -112,6 +141,7 @@ with gr.Blocks() as gradio_app:
             recording_ipa,
             ideal_ipa,
             res,
+            number_score_de, number_score_en
         ],
     )
     btn_run_tts.click(

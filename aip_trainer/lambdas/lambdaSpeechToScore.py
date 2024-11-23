@@ -126,12 +126,12 @@ def get_speech_to_score_dict(real_text: str, file_bytes_or_audiotmpfile: str | d
     duration = time.time() - start
     duration_tot = time.time() - start0
     app_logger.info(f'Time to post-process results: {duration}, tot_duration:{duration_tot}.')
-    pronunciation_accuracy = str(int(result['pronunciation_accuracy']))
+    pronunciation_accuracy = float(result['pronunciation_accuracy'])
     ipa_transcript = result['recording_ipa']
 
     return {'real_transcript': result['recording_transcript'],
            'ipa_transcript': ipa_transcript,
-           'pronunciation_accuracy': pronunciation_accuracy,
+           'pronunciation_accuracy': float(f"{pronunciation_accuracy:.2f}"),
            'real_transcripts': real_transcripts, 'matched_transcripts': matched_transcripts,
            'real_transcripts_ipa': real_transcripts_ipa, 'matched_transcripts_ipa': matched_transcripts_ipa,
            'pair_accuracy_category': pair_accuracy_category,
