@@ -14,6 +14,7 @@ def clear2():
 
 
 with gr.Blocks() as gradio_app:
+    local_storage = gr.BrowserState([0.0, 0.0])
     app_logger.info("start gradio app building...")
 
     project_root_folder = Path(PROJECT_ROOT_FOLDER)
@@ -169,6 +170,15 @@ with gr.Blocks() as gradio_app:
         outputs=[html_output],
         js=js.js_update_ipa_output,
     )
+    
+    @gradio_app.load(inputs=[local_storage], outputs=[number_score_de, number_score_en])
+    def load_from_local_storage(saved_values):
+        print("loading from local storage", saved_values)
+        return saved_values[0], saved_values[1]
+
+    @gr.on([number_score_de.change, number_score_en.change], inputs=[number_score_de, number_score_en], outputs=[local_storage])
+    def save_to_local_storage(score_de, score_en):
+        return [score_de, score_en]
 
 
 if __name__ == "__main__":
