@@ -5,4 +5,4 @@ for more details.
 
 Selecting a new example invalidates all previous inputs (Text-to-Speech audio and Speech-to-Text recordings): in that case you should recorder again your audio speeceh.
 
-Right now this tool uses {} as sample rate value. From empirical tests the best sample rate value is 48000...
+Right now this tool uses {sample_rate_start} as sample rate value. From empirical tests the best sample rate value is 48000.

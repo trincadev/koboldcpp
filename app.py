@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import gradio as gr
 
-from aip_trainer import PROJECT_ROOT_FOLDER, app_logger
+from aip_trainer import PROJECT_ROOT_FOLDER, app_logger, sample_rate_start
 from aip_trainer.lambdas import js, lambdaGetSample, lambdaSpeechToScore, lambdaTTS
 
 
@@ -20,10 +20,7 @@ with gr.Blocks() as gradio_app:
     project_root_folder = Path(PROJECT_ROOT_FOLDER)
     with open(project_root_folder / "aip_trainer" / "lambdas" / "app_description.md", "r", encoding="utf-8") as app_description_src:
         app_description = app_description_src.read()
-        gr.Markdown(app_description)
-    with gr.Row():
-        number_score_de = gr.Number(label="Score DE", value=0.0)
-        number_score_en = gr.Number(label="Score EN", value=0.0)
+        gr.Markdown(app_description.format(sample_rate_start=sample_rate_start))
     with gr.Row():
         with gr.Column(scale=4, min_width=300):
             with gr.Row():
@@ -64,18 +61,6 @@ with gr.Blocks() as gradio_app:
                     show_download_button=True,
                 )
         with gr.Column(scale=4, min_width=320):
-            examples_text = gr.Examples(
-                examples=[
-                    ["Hallo, wie geht es dir?", "de", 1],
-                    ["Hi there, how are you?", "en", 1],
-                    ["Die König-Ludwig-Eiche ist ein Naturdenkmal im Staatsbad Brückenau.", "de", 2,],
-                    ["Rome is home to some of the most beautiful monuments in the world.", "en", 2],
-                    ["Die König-Ludwig-Eiche ist ein Naturdenkmal im Staatsbad Brückenau, einem Ortsteil des drei Kilometer nordöstlich gelegenen Bad Brückenau im Landkreis Bad Kissingen in Bayern.", "de", 3],
-                    ["Some machine learning models are designed to understand and generate human-like text based on the input they receive.", "en", 3],
-                ],
-                inputs=[learner_transcription, language, difficulty],
-            )
-
             transcripted_text = gr.Textbox(
                 lines=2, placeholder=None, label="Transcripted text", visible=False
             )
@@ -85,7 +70,13 @@ with gr.Blocks() as gradio_app:
                 label="Letters correctness",
                 visible=False,
             )
-            pronunciation_accuracy = gr.Number(label="Pronunciation accuracy %")
+            with gr.Row():
+                with gr.Column(scale=3, min_width=100):
+                    pronunciation_accuracy = gr.Number(label="Current pronunciation accuracy %")
+                with gr.Column(scale=2, min_width=100):
+                    number_score_de = gr.Number(label="Score DE", value=0)
+                with gr.Column(scale=2, min_width=100):
+                    number_score_en = gr.Number(label="Score EN", value=0)
             recording_ipa = gr.Textbox(
                 lines=1, placeholder=None, label="Learner phonetic transcription"
             )
@@ -104,6 +95,18 @@ with gr.Blocks() as gradio_app:
             )
             with gr.Row():
                 btn = gr.Button(value="Recognize speech accuracy")
+            with gr.Accordion("Click here to expand the table examples", open=False):
+                examples_text = gr.Examples(
+                    examples=[
+                        ["Hallo, wie geht es dir?", "de", 1],
+                        ["Hi there, how are you?", "en", 1],
+                        ["Die König-Ludwig-Eiche ist ein Naturdenkmal im Staatsbad Brückenau.", "de", 2,],
+                        ["Rome is home to some of the most beautiful monuments in the world.", "en", 2],
+                        ["Die König-Ludwig-Eiche ist ein Naturdenkmal im Staatsbad Brückenau, einem Ortsteil des drei Kilometer nordöstlich gelegenen Bad Brückenau im Landkreis Bad Kissingen in Bayern.", "de", 3],
+                        ["Some machine learning models are designed to understand and generate human-like text based on the input they receive.", "en", 3],
+                    ],
+                    inputs=[learner_transcription, language, difficulty],
+                )
 
     def get_updated_score_by_language(text: str, audio_rec: str | Path, lang: str, score_de: float, score_en: float):
         _transcripted_text, _letter_correctness, _pronunciation_accuracy, _recording_ipa, _ideal_ipa, _res = lambdaSpeechToScore.get_speech_to_score_tuple(text, audio_rec, lang)
