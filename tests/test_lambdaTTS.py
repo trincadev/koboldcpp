@@ -42,14 +42,14 @@ class TestLambdaTTS(unittest.TestCase):
         exec_test_lambda_tts(
             "Hi there, how are you?",
             "en",
-            b'vf1QWORrGWlvCEQuvI0fajGG7iz2Zqp83p8dVH8pZtY='
+            b'6rZkDkF/Jc/7S5aTBlyNvntMng1+N81Flndx3WM5U0g='
         )
 
     def test_lambdaTTS_de_ok(self):
         exec_test_lambda_tts(
             "Ich bin Alex!",
             "de",
-            b'jkvM+0Whlb1nwf9eiuDyoQZ1ekzb46k3DcW2glYh0YY='
+            b'4CCWiz7DOOHSmyYcS8KTBvk2E3zHtaX5umtksVln5VA='
         )
 
     def test_lambdaTTS_empty_text(self):

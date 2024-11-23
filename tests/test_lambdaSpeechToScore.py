@@ -13,7 +13,7 @@ expected_output = {
     "de": {
         "real_transcript": text_dict["de"],
         "ipa_transcript": "\u026a\u00e7 bi\u02d0n a\u02d0l\u025bksv\u025b\u02d0 b\u025bst\u025b\u02d0 du\u02d0",
-        "pronunciation_accuracy": "63",
+        "pronunciation_accuracy": 63.0,
         "real_transcripts": text_dict["de"],
         "matched_transcripts": "ich bin alexwe - beste du",
         "real_transcripts_ipa": "\u026a\u00e7 bi\u02d0n a\u02d0l\u025bks, v\u0250 b\u026ast du\u02d0?",
@@ -26,7 +26,7 @@ expected_output = {
     "en": {
         "real_transcript": text_dict["en"],
         "ipa_transcript": "ha\u026a ha\u028a \u0259r ju",
-        "pronunciation_accuracy": "69",
+        "pronunciation_accuracy": 69.0,
         "real_transcripts": text_dict["en"],
         "matched_transcripts": "hi - how are you",
         "real_transcripts_ipa": "ha\u026a \u00f0\u025br, ha\u028a \u0259r ju?",
@@ -82,9 +82,9 @@ def check_output(self, output, expected_output):
         output = check_output_by_field(
             output, "start_time", "\d+\.\d+", expected_output
         )
-        output = check_output_by_field(
-            output, "pronunciation_accuracy", "\d+", expected_output
-        )
+        pronunciation_accuracy = output["pronunciation_accuracy"]
+        assert isinstance(pronunciation_accuracy, float)
+        assert pronunciation_accuracy <= 100
         output["matched_transcripts"] = expected_output["matched_transcripts"]
         output["matched_transcripts_ipa"] = expected_output["matched_transcripts_ipa"]
         output["pronunciation_accuracy"] = expected_output["pronunciation_accuracy"]
@@ -205,7 +205,8 @@ class TestGetAccuracyFromRecordedAudio(unittest.TestCase):
         )
         assert real_transcripts == text_dict[language]
         check_value_by_field(is_letter_correct_all_words, "[01]+")
-        check_value_by_field(pronunciation_accuracy, "\d+")
+        assert isinstance(pronunciation_accuracy, float)
+        assert pronunciation_accuracy <= 100
         assert len(ipa_transcript.strip()) > 0
         assert len(real_transcripts_ipa.strip()) > 0
         check_output(self, json.loads(dumped), expected_output[language])
@@ -230,7 +231,8 @@ class TestGetAccuracyFromRecordedAudio(unittest.TestCase):
         )
         assert real_transcripts == text_dict[language]
         check_value_by_field(is_letter_correct_all_words, "[01]+")
-        check_value_by_field(pronunciation_accuracy, "\d+")
+        assert isinstance(pronunciation_accuracy, float)
+        assert pronunciation_accuracy <= 100
         assert len(ipa_transcript.strip()) > 0
         assert len(real_transcripts_ipa.strip()) > 0
         check_output(self, json.loads(dumped), expected_output[language])

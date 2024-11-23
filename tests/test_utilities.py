@@ -43,3 +43,7 @@ class TestUtilities(unittest.TestCase):
         output_hash = hash_calculate(EVENTS_FOLDER / "GetAccuracyFromRecordedAudio.json", is_file=True)
         app_logger.info(f"output_hash json: {output_hash}")
         assert b'i83jKpwzfcPitZsrHsnhyFt8xbc+DStpns9rb3vfigw=' == output_hash
+
+
+if __name__ == '__main__':
+    unittest.main()

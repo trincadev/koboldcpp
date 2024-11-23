@@ -95,3 +95,7 @@ class TestSerialize(unittest.TestCase):
                  'geometry': {'type': 'Point', 'coordinates': [139.021, 35.233]}}
             ]
         })
+
+
+if __name__ == '__main__':
+    unittest.main()
