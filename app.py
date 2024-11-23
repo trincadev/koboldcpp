@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 import gradio as gr
 
@@ -19,15 +18,15 @@ with gr.Blocks() as gradio_app:
 
     project_root_folder = Path(PROJECT_ROOT_FOLDER)
     with open(project_root_folder / "aip_trainer" / "lambdas" / "app_description.md", "r", encoding="utf-8") as app_description_src:
-        app_description = app_description_src.read()
-        gr.Markdown(app_description.format(sample_rate_start=sample_rate_start))
+        md_app_description = app_description_src.read()
+        gr.Markdown(md_app_description.format(sample_rate_start=sample_rate_start))
     with gr.Row():
         with gr.Column(scale=4, min_width=300):
             with gr.Row():
                 with gr.Column(scale=2, min_width=80):
-                    language = gr.Radio(["de", "en"], label="Language", value="en")
+                    radio_language = gr.Radio(["de", "en"], label="Language", value="en")
                 with gr.Column(scale=5, min_width=160):
-                    difficulty = gr.Radio(
+                    radio_difficulty = gr.Radio(
                         label="Difficulty",
                         value=0,
                         choices=[
@@ -41,7 +40,7 @@ with gr.Blocks() as gradio_app:
                     btn_random_phrase = gr.Button(value="Choose a random phrase")
             with gr.Row():
                 with gr.Column(scale=7, min_width=300):
-                    learner_transcription = gr.Textbox(
+                    text_learner_transcription = gr.Textbox(
                         lines=3,
                         label="Learner Transcription",
                         value="Hi there, how are you?",
@@ -61,29 +60,31 @@ with gr.Blocks() as gradio_app:
                     show_download_button=True,
                 )
         with gr.Column(scale=4, min_width=320):
-            transcripted_text = gr.Textbox(
+            text_transcripted_hidden = gr.Textbox(
                 lines=2, placeholder=None, label="Transcripted text", visible=False
             )
-            letter_correctness = gr.Textbox(
+            text_letter_correctness = gr.Textbox(
                 lines=1,
                 placeholder=None,
                 label="Letters correctness",
                 visible=False,
             )
             with gr.Row():
-                with gr.Column(scale=3, min_width=100):
-                    pronunciation_accuracy = gr.Number(label="Current pronunciation accuracy %")
-                with gr.Column(scale=2, min_width=100):
-                    number_score_de = gr.Number(label="Score DE", value=0)
-                with gr.Column(scale=2, min_width=100):
-                    number_score_en = gr.Number(label="Score EN", value=0)
-            recording_ipa = gr.Textbox(
+                gr.Markdown("Speech accuracy score (%)")
+            with gr.Row():
+                    with gr.Column(min_width=100):
+                        number_pronunciation_accuracy = gr.Number(label="Current score")
+                    with gr.Column(min_width=100):
+                        number_score_de = gr.Number(label="Global score DE", value=0)
+                    with gr.Column(min_width=100):
+                        number_score_en = gr.Number(label="Global score EN", value=0)
+            text_recording_ipa = gr.Textbox(
                 lines=1, placeholder=None, label="Learner phonetic transcription"
             )
-            ideal_ipa = gr.Textbox(
+            text_ideal_ipa = gr.Textbox(
                 lines=1, placeholder=None, label="Ideal phonetic transcription"
             )
-            res = gr.Textbox(lines=1, placeholder=None, label="RES", visible=False)
+            text_raw_json_output_hidden = gr.Textbox(lines=1, placeholder=None, label="text_raw_json_output_hidden", visible=False)
             html_output = gr.HTML(
                 label="Speech accuracy output",
                 elem_id="speech-output",
@@ -105,18 +106,18 @@ with gr.Blocks() as gradio_app:
                         ["Die König-Ludwig-Eiche ist ein Naturdenkmal im Staatsbad Brückenau, einem Ortsteil des drei Kilometer nordöstlich gelegenen Bad Brückenau im Landkreis Bad Kissingen in Bayern.", "de", 3],
                         ["Some machine learning models are designed to understand and generate human-like text based on the input they receive.", "en", 3],
                     ],
-                    inputs=[learner_transcription, language, difficulty],
+                    inputs=[text_learner_transcription, radio_language, radio_difficulty],
                 )
 
     def get_updated_score_by_language(text: str, audio_rec: str | Path, lang: str, score_de: float, score_en: float):
         _transcripted_text, _letter_correctness, _pronunciation_accuracy, _recording_ipa, _ideal_ipa, _res = lambdaSpeechToScore.get_speech_to_score_tuple(text, audio_rec, lang)
         output = {
-            transcripted_text: _transcripted_text,
-            letter_correctness: _letter_correctness,
-            pronunciation_accuracy: _pronunciation_accuracy,
-            recording_ipa: _recording_ipa,
-            ideal_ipa: _ideal_ipa,
-            res: _res,
+            text_transcripted_hidden: _transcripted_text,
+            text_letter_correctness: _letter_correctness,
+            number_pronunciation_accuracy: _pronunciation_accuracy,
+            text_recording_ipa: _recording_ipa,
+            text_ideal_ipa: _ideal_ipa,
+            text_raw_json_output_hidden: _res,
         }
         match lang:
             case "de":
@@ -136,26 +137,26 @@ with gr.Blocks() as gradio_app:
 
     btn.click(
         get_updated_score_by_language,
-        inputs=[learner_transcription, audio_learner_recording_stt, language, number_score_de, number_score_en],
+        inputs=[text_learner_transcription, audio_learner_recording_stt, radio_language, number_score_de, number_score_en],
         outputs=[
-            transcripted_text,
-            letter_correctness,
-            pronunciation_accuracy,
-            recording_ipa,
-            ideal_ipa,
-            res,
+            text_transcripted_hidden,
+            text_letter_correctness,
+            number_pronunciation_accuracy,
+            text_recording_ipa,
+            text_ideal_ipa,
+            text_raw_json_output_hidden,
             number_score_de, number_score_en
         ],
     )
     btn_run_tts.click(
         fn=lambdaTTS.get_tts,
-        inputs=[learner_transcription, language],
+        inputs=[text_learner_transcription, radio_language],
         outputs=audio_tts,
     )
     btn_random_phrase.click(
         lambdaGetSample.get_random_selection,
-        inputs=[language, difficulty],
-        outputs=[learner_transcription],
+        inputs=[radio_language, radio_difficulty],
+        outputs=[text_learner_transcription],
     )
     btn_random_phrase.click(
         clear2,
@@ -164,7 +165,7 @@ with gr.Blocks() as gradio_app:
     )
     html_output.change(
         None,
-        inputs=[transcripted_text, letter_correctness],
+        inputs=[text_transcripted_hidden, text_letter_correctness],
         outputs=[html_output],
         js=js.js_update_ipa_output,
     )
