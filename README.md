@@ -72,6 +72,7 @@ pnpm playwright test
 
 ### TODO
 
+- play the isolated words in the recordings, to compare the 'ideal' pronunciation with the learner pronunciation (now it's possible on the old frontend, complicated to implement with Gradio - waiting for [this](https://github.com/gradio-app/gradio/issues/9823))
 - improve documentation (especially function docstrings), backend tests
 - move from pytorch to onnxruntime (if possible)
 - add more e2e tests with playwright
