@@ -10,7 +10,7 @@ test("test: get a custom sample writing within the input field.", async () => {
   const context = await browser.newContext();
   context.grantPermissions(["microphone"]);
   const page = await browser.newPage({});
-  await page.goto("/");
+  await page.goto("http://localhost:3000");
 
   const inputField = page.getByPlaceholder(
     "Write and press enter to filter"

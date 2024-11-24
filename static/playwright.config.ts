@@ -25,13 +25,22 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://127.0.0.1:3000',
+    // baseURL: 'http://127.0.0.1:3000',
+    browserName: "chromium",
     viewport: { width: 1280, height: 900 },
     ignoreHTTPSErrors: true,
     permissions: ['microphone'],
     screenshot: 'only-on-failure',
     trace: 'on-first-retry',
     video: 'retain-on-failure',
+    launchOptions: {
+      headless: false,
+      ignoreDefaultArgs: ['--mute-audio'],
+      args: [
+        "--use-fake-device-for-media-stream",
+        "--use-fake-ui-for-media-stream",
+      ],
+    }
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
   },
 
