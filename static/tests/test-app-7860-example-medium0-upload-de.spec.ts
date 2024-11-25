@@ -21,8 +21,8 @@ test("test: get a phonetic accuracy evaluation from an uploaded audio file.", as
   accordionExamples.click();
   const exampleMediumFirst = page.getByRole('gridcell', { name: 'medium' }).first();
   await exampleMediumFirst.click();
-
-  await page.getByRole('button', { name: 'Run TTS' }).click();
+  
+  await page.getByRole('button', { name: 'TTS backend', exact: true }).click();
   const buttonPlay = page.getByLabel('Play', { exact: true })
   await buttonPlay.click();
   const waveFormTTS = page.locator('.scroll > .wrapper').first();

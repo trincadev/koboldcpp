@@ -10,6 +10,46 @@ css = """
 .speech-output-container {align-items: center; min-height: 60px; padding-left: 8px; padding-right: 8px; margin-top: -12px; border-width: 1px; border-style: solid; border-color: lightgrey;}
 """
 
+js_play_audio = """
+function playAudio(text, language) {
+    let voice_idx = 0;
+    let voice_synth = null;
+    let synth = window.speechSynthesis;
+
+    function setSpeech() {
+        return new Promise(
+            function (resolve, reject) {
+                let id;
+
+                id = setInterval(() => {
+                    if (synth.getVoices().length !== 0) {
+                        resolve(synth.getVoices());
+                        clearInterval(id);
+                    }
+                }, 10);
+            }
+        )
+    }
+
+    let s = setSpeech();
+    s.then((voices) => {
+        for (idx = 0; idx < voices.length; idx++) {
+            if (voices[idx].lang.slice(0, 2) == language) {
+                voice_synth = voices[idx];
+                break;
+            }
+        }
+
+        var utterThis = new SpeechSynthesisUtterance(text);
+        utterThis.voice = voice_synth;
+        utterThis.rate = 0.7;
+
+        synth.speak(utterThis);
+        return utterThis;
+    });
+}
+"""
+
 
 def clear():
     return None
@@ -53,12 +93,12 @@ with gr.Blocks(css=css) as gradio_app:
                         value="Hi there, how are you?",
                     )
             with gr.Row():
-                with gr.Column(scale=7, min_width=240):
-                    audio_tts = gr.Audio(label="Audio TTS")
-                with gr.Column(scale=1, min_width=50):
-                    btn_run_tts = gr.Button(value="Run TTS")
-                    btn_clear_tts = gr.Button(value="Clear TTS")
-                    btn_clear_tts.click(clear, inputs=[], outputs=[audio_tts])
+                audio_tts = gr.Audio(label="Audio TTS")
+            with gr.Row():
+                btn_run_tts = gr.Button(value="TTS in browser")
+                btn_run_tts_backend = gr.Button(value="TTS backend")
+                btn_clear_tts = gr.Button(value="Clear TTS backend")
+                btn_clear_tts.click(clear, inputs=[], outputs=[audio_tts])
             with gr.Row():
                 audio_learner_recording_stt = gr.Audio(
                     label="Learner Recording",
@@ -156,7 +196,8 @@ with gr.Blocks(css=css) as gradio_app:
             number_score_de, number_score_en
         ],
     )
-    btn_run_tts.click(
+    btn_run_tts.click(fn=None, inputs=[text_learner_transcription, radio_language], outputs=audio_tts, js=js_play_audio)
+    btn_run_tts_backend.click(
         fn=lambdaTTS.get_tts,
         inputs=[text_learner_transcription, radio_language],
         outputs=audio_tts,

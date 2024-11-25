@@ -16,7 +16,7 @@ test("test: get a phonetic accuracy evaluation from an uploaded audio file.", as
   const page = await browser.newPage({});
 
   await page.goto('http://localhost:7860/');
-  await page.getByRole('button', { name: 'Run TTS' }).click();
+  await page.getByRole('button', { name: 'TTS backend', exact: true }).click();
   const buttonPlay = page.getByLabel('Play', { exact: true })
   await buttonPlay.click();
   const waveFormTTS = page.locator('.scroll > .wrapper').first();
