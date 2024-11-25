@@ -11,16 +11,27 @@ test("test: get a custom sample writing within the input field.", async () => {
   context.grantPermissions(["microphone"]);
   const page = await browser.newPage({});
   await page.goto("http://localhost:3000");
+  await expect(page).toHaveTitle("AI pronunciation trainer");
+
+  const textDescription = page.getByText("Click on the bar on the");
+  await expect(textDescription).toBeVisible();
 
   const inputField = page.getByPlaceholder(
     "Write and press enter to filter"
   );
-  await inputField.fill("Hi Tom, how are you?");
+  const text = "Hi Tom, how are you?"
+  await expect(page.getByText(text)).toBeHidden();
+  await inputField.fill(text);
   await inputField.press("Enter");
-  await expect(page.getByText("Hi Tom, how are you?")).toBeVisible();
+  await expect(page.getByText(text)).toBeVisible();
+  await page.waitForTimeout(500);
+  
   await expect(
     page.getByText("/ hiː toːm, hoː aːrɛː yːuː? /")
   ).toBeVisible();
+  await expect(textDescription).toBeHidden();
+  await expect(page).toHaveScreenshot();
+
   console.log("end");
   await page.close();
 });

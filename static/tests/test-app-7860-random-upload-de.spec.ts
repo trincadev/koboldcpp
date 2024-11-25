@@ -1,7 +1,7 @@
-import { test, expect, chromium } from "@playwright/test";
+import { test, expect, chromium,  } from "@playwright/test";
 
 test("test: get a phonetic accuracy evaluation from an uploaded audio file.", async () => {
-  const testAudioEnvPath = `${import.meta.dirname}/../../tests/events/test_en_easy.wav`
+  const testAudioEnvPath = `${import.meta.dirname}/../../tests/events/test_de_easy.wav`
   console.log(`testAudioEnvPath: ${testAudioEnvPath}...`);
   
   const browser = await chromium.launch({
@@ -16,6 +16,24 @@ test("test: get a phonetic accuracy evaluation from an uploaded audio file.", as
   const page = await browser.newPage({});
 
   await page.goto('http://localhost:7860/');
+  await page.waitForSelector("textarea")
+
+  const textboxLearnerTranscriptionInput = page.getByLabel("Learner Transcription");
+  let learnerTranscriptionScreenshot0 = await textboxLearnerTranscriptionInput.screenshot()
+
+  const buttonRandom = page.getByRole('button', { name: 'Choose a random phrase' });
+  await buttonRandom.click();
+  await page.waitForTimeout(300);
+  let learnerTranscriptionScreenshot1 = await textboxLearnerTranscriptionInput.screenshot();
+
+  // find a way to measure how much the screenshots differ
+  // assert that the Learner Transcription screenshots (converted both to base64 strings) changed
+  expect(
+    learnerTranscriptionScreenshot0.toString('base64')
+  ).not.toEqual(
+    learnerTranscriptionScreenshot1.toString('base64')
+  )
+
   await page.getByRole('button', { name: 'Run TTS' }).click();
   const buttonPlay = page.getByLabel('Play', { exact: true })
   await buttonPlay.click();
@@ -35,8 +53,12 @@ test("test: get a phonetic accuracy evaluation from an uploaded audio file.", as
   await page.waitForTimeout(300);
   const errorsElements = page.getByText(/Error/);
   const ErrorText = errorsElements.all()
-  console.log("ErrorText:", (await ErrorText).length, "#");
+  console.log(`ErrorText: ${(await ErrorText).length}...`)
   await expect(errorsElements).toHaveCount(0);
+
+  // find a way to validate the different 'Current score' field values
+  // const currentScore = page.getByLabel('Current score');
+  // const currentScoreText = await currentScore.innerText();
   console.log("end");
   await page.close();
 });

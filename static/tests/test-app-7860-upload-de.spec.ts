@@ -1,7 +1,7 @@
 import { test, expect, chromium } from "@playwright/test";
 
 test("test: get a phonetic accuracy evaluation from an uploaded audio file.", async () => {
-  const testAudioEnvPath = `${import.meta.dirname}/../../tests/events/test_en_easy.wav`
+  const testAudioEnvPath = `${import.meta.dirname}/../../tests/events/test_de_easy.wav`
   console.log(`testAudioEnvPath: ${testAudioEnvPath}...`);
   
   const browser = await chromium.launch({
@@ -16,6 +16,13 @@ test("test: get a phonetic accuracy evaluation from an uploaded audio file.", as
   const page = await browser.newPage({});
 
   await page.goto('http://localhost:7860/');
+
+  const radioLanguageSelectedDE = page.getByRole('radio', { name: 'de' })
+  await radioLanguageSelectedDE.check();
+
+  const textboxLearnerTranscriptionInput = page.getByLabel('Learner Transcription')
+  await textboxLearnerTranscriptionInput.fill('Ich bin Alex, wer bist du?');
+
   await page.getByRole('button', { name: 'Run TTS' }).click();
   const buttonPlay = page.getByLabel('Play', { exact: true })
   await buttonPlay.click();

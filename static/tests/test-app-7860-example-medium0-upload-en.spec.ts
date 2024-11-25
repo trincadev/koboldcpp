@@ -1,7 +1,7 @@
 import { test, expect, chromium } from "@playwright/test";
 
 test("test: get a phonetic accuracy evaluation from an uploaded audio file.", async () => {
-  const testAudioEnvPath = `${import.meta.dirname}/../../tests/events/test_en_easy.wav`
+  const testAudioEnvPath = `${import.meta.dirname}/../../tests/events/test_en_medium.wav`
   console.log(`testAudioEnvPath: ${testAudioEnvPath}...`);
   
   const browser = await chromium.launch({
@@ -16,6 +16,12 @@ test("test: get a phonetic accuracy evaluation from an uploaded audio file.", as
   const page = await browser.newPage({});
 
   await page.goto('http://localhost:7860/');
+
+  const accordionExamples = page.getByText('Click here to expand the table examples ▼ Examples Learner Transcription');
+  accordionExamples.click();
+  const exampleMediumFirst = page.getByRole('gridcell', { name: 'medium' }).nth(1);
+  await exampleMediumFirst.click();
+
   await page.getByRole('button', { name: 'Run TTS' }).click();
   const buttonPlay = page.getByLabel('Play', { exact: true })
   await buttonPlay.click();
@@ -35,7 +41,7 @@ test("test: get a phonetic accuracy evaluation from an uploaded audio file.", as
   await page.waitForTimeout(300);
   const errorsElements = page.getByText(/Error/);
   const ErrorText = errorsElements.all()
-  console.log("ErrorText:", (await ErrorText).length, "#");
+  console.log(`ErrorText: ${(await ErrorText).length}...`)
   await expect(errorsElements).toHaveCount(0);
   console.log("end");
   await page.close();

@@ -1,16 +1,23 @@
 import { test, expect, chromium } from "@playwright/test";
 
-const basedirAudioFiles = `${__dirname}/../../tests/events`
-
 test("test: get a phonetic accuracy evaluation from a recorded audio.", async () => {
-  const testAudioEnvPath = `${basedirAudioFiles}/test_en.wav`
+  /**
+   * - DE:
+   *      - random choice (random, easy, medium, hard)
+   *      - choice from the examples accordion
+   *         - record a fake new audio
+   *         - upload
+   * - EN:
+   *      - random choice (random, easy, medium, hard)
+   */  
+  const testAudioEnvPath = `test_de.wav`
   console.log("start");
   console.log("testAudioEnvPath", testAudioEnvPath, "#");
   const browser = await chromium.launch({
     args: [
         "--use-fake-device-for-media-stream",
         "--use-fake-ui-for-media-stream",
-        "--use-file-for-fake-audio-capture=/home/wlsuser/workspace/ai-pronunciation-trainer-hf/tests/events/test_en.wav",
+        `--use-file-for-fake-audio-capture=${testAudioEnvPath}`,
       ],
       ignoreDefaultArgs: ['--mute-audio']
     })
@@ -20,6 +27,12 @@ test("test: get a phonetic accuracy evaluation from a recorded audio.", async ()
   const page = await browser.newPage({});
 
   await page.goto('http://localhost:7860/');
+  
+  const accordionExamples = page.getByText('Click here to expand the table examples ▼ Examples Learner Transcription');
+  accordionExamples.click();
+  const exampleMediumNth1 = page.getByRole('gridcell', { name: 'medium' }).nth(1);
+  await exampleMediumNth1.click();
+  
   const buttonTTS = page.getByRole('button', { name: 'Run TTS' })
   await buttonTTS.click();
   // todo: improve this hardcoded timeout

@@ -34,7 +34,6 @@ export default defineConfig({
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     launchOptions: {
-      headless: false,
       ignoreDefaultArgs: ['--mute-audio'],
       args: [
         "--use-fake-device-for-media-stream",
