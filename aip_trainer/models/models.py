@@ -5,12 +5,12 @@ import torch
 import torch.nn as nn
 from silero.utils import Decoder
 
-from aip_trainer import app_logger
+from aip_trainer import app_logger, sample_rate_start
 
 
 default_speaker_dict = {
-    "de": {"speaker": "karlsson", "model_id": "v3_de", "sample_rate": 48000},
-    "en": {"speaker": "en_0", "model_id": "v3_en", "sample_rate": 48000},
+    "de": {"speaker": "karlsson", "model_id": "v3_de", "sample_rate": sample_rate_start},
+    "en": {"speaker": "en_0", "model_id": "v3_en", "sample_rate": sample_rate_start},
 }
 
 

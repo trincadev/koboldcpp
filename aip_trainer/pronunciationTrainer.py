@@ -81,7 +81,7 @@ class PronunciationTrainer:
     def processAudioForGivenText(self, recordedAudio: torch.Tensor = None, real_text=None):
 
         start = time.time()
-        app_logger.info(f'starting getAudioTranscript...')
+        app_logger.info('starting getAudioTranscript...')
         recording_transcript, recording_ipa, word_locations = self.getAudioTranscript(recordedAudio)
 
         duration = time.time() - start

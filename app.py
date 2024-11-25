@@ -1,119 +1,191 @@
+from pathlib import Path
 import gradio as gr
 
-from aip_trainer import app_logger
-from aip_trainer.lambdas import lambdaSpeechToScore, lambdaTTS
+from aip_trainer import PROJECT_ROOT_FOLDER, app_logger, sample_rate_start
+from aip_trainer.lambdas import js, lambdaGetSample, lambdaSpeechToScore, lambdaTTS
 
 
-js = """
-function updateCssText(text, letters) {
-    let wordsArr = text.split(" ")
-    let lettersWordsArr = letters.split(" ")
-    let speechOutputContainer = document.querySelector('#speech-output');
-    speechOutputContainer.textContent = ""
-
-    for (let idx in wordsArr) {
-        let word = wordsArr[idx]
-        let letterIsCorrect = lettersWordsArr[idx]
-        for (let idx1 in word) {
-        let letterCorrect = letterIsCorrect[idx1] == "1"
-        let containerLetter = document.createElement("span")
-        containerLetter.style.color = letterCorrect ? 'green' : "red"
-        containerLetter.innerText = word[idx1];
-        speechOutputContainer.appendChild(containerLetter)
-        }
-        let containerSpace = document.createElement("span")
-        containerSpace.textContent = " "
-        speechOutputContainer.appendChild(containerSpace)
-    }
-}
+css = """
+.speech-output-label p {color: grey;}
+.speech-output-container {align-items: center; min-height: 60px; padding-left: 8px; padding-right: 8px; margin-top: -12px; border-width: 1px; border-style: solid; border-color: lightgrey;}
 """
 
-with gr.Blocks() as gradio_app:
+
+def clear():
+    return None
+
+
+def clear2():
+    return None, None
+
+
+with gr.Blocks(css=css) as gradio_app:
+    local_storage = gr.BrowserState([0.0, 0.0])
     app_logger.info("start gradio app building...")
 
-    gr.Markdown(
-        """
-        # AI Pronunciation Trainer
-
-        See [my fork](https://github.com/trincadev/ai-pronunciation-trainer) of [AI Pronunciation Trainer](https://github.com/Thiagohgl/ai-pronunciation-trainer) repositroy
-        for more details.
-        """
-    )
+    project_root_folder = Path(PROJECT_ROOT_FOLDER)
+    with open(project_root_folder / "aip_trainer" / "lambdas" / "app_description.md", "r", encoding="utf-8") as app_description_src:
+        md_app_description = app_description_src.read()
+        gr.Markdown(md_app_description.format(sample_rate_start=sample_rate_start))
     with gr.Row():
         with gr.Column(scale=4, min_width=300):
             with gr.Row():
-                with gr.Column(scale=1, min_width=50):
-                    language = gr.Radio(["de", "en"], label="Language", value="en")
+                with gr.Column(scale=2, min_width=80):
+                    radio_language = gr.Radio(["de", "en"], label="Language", value="en")
+                with gr.Column(scale=5, min_width=160):
+                    radio_difficulty = gr.Radio(
+                        label="Difficulty",
+                        value=0,
+                        choices=[
+                            ("random", 0),
+                            ("easy", 1),
+                            ("medium", 2),
+                            ("hard", 3),
+                        ],
+                    )
+                with gr.Column(scale=1, min_width=100):
+                    btn_random_phrase = gr.Button(value="Choose a random phrase")
+            with gr.Row():
                 with gr.Column(scale=7, min_width=300):
-                    learner_transcription = gr.Textbox(
+                    text_learner_transcription = gr.Textbox(
                         lines=3,
                         label="Learner Transcription",
                         value="Hi there, how are you?",
                     )
             with gr.Row():
-                learner_recording = gr.Audio(
+                with gr.Column(scale=7, min_width=240):
+                    audio_tts = gr.Audio(label="Audio TTS")
+                with gr.Column(scale=1, min_width=50):
+                    btn_run_tts = gr.Button(value="Run TTS")
+                    btn_clear_tts = gr.Button(value="Clear TTS")
+                    btn_clear_tts.click(clear, inputs=[], outputs=[audio_tts])
+            with gr.Row():
+                audio_learner_recording_stt = gr.Audio(
                     label="Learner Recording",
                     sources=["microphone", "upload"],
                     type="filepath",
+                    show_download_button=True,
                 )
-            with gr.Row():
-                tts = gr.Audio(label="tts")
-                btn = gr.Button(value="TTS")
-                btn.click(
-                    fn=lambdaTTS.get_tts,
-                    inputs=[learner_transcription, language],
-                    outputs=tts,
-                )
-        with gr.Column(scale=3, min_width=300):
-            transcripted_text = gr.Textbox(
-                lines=2, placeholder=None, label="Transcripted text", visible=False
+        with gr.Column(scale=4, min_width=320):
+            text_transcribed_hidden = gr.Textbox(
+                placeholder=None, label="Transcribed text", visible=False
             )
-            letter_correctness = gr.Textbox(
-                lines=1,
+            text_letter_correctness = gr.Textbox(
                 placeholder=None,
                 label="Letters correctness",
                 visible=False,
             )
-            pronunciation_accuracy = gr.Textbox(
-                lines=1, placeholder=None, label="Pronunciation accuracy %"
+            text_recording_ipa = gr.Textbox(
+                placeholder=None, label="Learner phonetic transcription"
             )
-            recording_ipa = gr.Textbox(
-                lines=1, placeholder=None, label="Learner phonetic transcription"
+            text_ideal_ipa = gr.Textbox(
+                placeholder=None, label="Ideal phonetic transcription"
             )
-            ideal_ipa = gr.Textbox(
-                lines=1, placeholder=None, label="Ideal phonetic transcription"
-            )
-            res = gr.Textbox(lines=1, placeholder=None, label="RES", visible=False)
-            html_output = gr.HTML(
-                label="Speech accuracy output",
-                elem_id="speech-output",
-                show_label=True,
-                visible=True,
-                render=True,
-                value=" - ",
-                elem_classes="speech-output",
-            )
-            btn = gr.Button(value="Recognize speech accuracy")
-            # real_transcripts, is_letter_correct_all_words, pronunciation_accuracy, result['recording_ipa'], real_transcripts_ipa, res
+            text_raw_json_output_hidden = gr.Textbox(placeholder=None, label="text_raw_json_output_hidden", visible=False)
+            gr.Markdown("Speech accuracy output", elem_classes="speech-output-label")
+            with gr.Row(elem_classes="speech-output-container"):
+                html_output = gr.HTML(
+                    label="Speech accuracy output",
+                    elem_id="speech-output",
+                    show_label=False,
+                    visible=True,
+                    render=True,
+                    value=" - ",
+                    elem_classes="speech-output",
+                )
+            with gr.Row():
+                gr.Markdown("### Speech accuracy score (%)", elem_classes="speech-accuracy-score-container row1")
+            with gr.Row():
+                with gr.Column(min_width=100, elem_classes="speech-accuracy-score-container row2 col1"):
+                    number_pronunciation_accuracy = gr.Number(label="Current score")
+                with gr.Column(min_width=100, elem_classes="speech-accuracy-score-container row2 col2"):
+                    number_score_de = gr.Number(label="Global score DE", value=0, interactive=False)
+                with gr.Column(min_width=100, elem_classes="speech-accuracy-score-container row2 col3"):
+                    number_score_en = gr.Number(label="Global score EN", value=0, interactive=False)
+            with gr.Row():
+                btn = gr.Button(value="Recognize speech accuracy")
+            with gr.Accordion("Click here to expand the table examples", open=False):
+                examples_text = gr.Examples(
+                    examples=[
+                        ["Hallo, wie geht es dir?", "de", 1],
+                        ["Hi there, how are you?", "en", 1],
+                        ["Die König-Ludwig-Eiche ist ein Naturdenkmal im Staatsbad Brückenau.", "de", 2,],
+                        ["Rome is home to some of the most beautiful monuments in the world.", "en", 2],
+                        ["Die König-Ludwig-Eiche ist ein Naturdenkmal im Staatsbad Brückenau, einem Ortsteil des drei Kilometer nordöstlich gelegenen Bad Brückenau im Landkreis Bad Kissingen in Bayern.", "de", 3],
+                        ["Some machine learning models are designed to understand and generate human-like text based on the input they receive.", "en", 3],
+                    ],
+                    inputs=[text_learner_transcription, radio_language, radio_difficulty],
+                )
+
+    def get_updated_score_by_language(text: str, audio_rec: str | Path, lang: str, score_de: float, score_en: float):
+        _transcribed_text, _letter_correctness, _pronunciation_accuracy, _recording_ipa, _ideal_ipa, _res = lambdaSpeechToScore.get_speech_to_score_tuple(text, audio_rec, lang)
+        output = {
+            text_transcribed_hidden: _transcribed_text,
+            text_letter_correctness: _letter_correctness,
+            number_pronunciation_accuracy: _pronunciation_accuracy,
+            text_recording_ipa: _recording_ipa,
+            text_ideal_ipa: _ideal_ipa,
+            text_raw_json_output_hidden: _res,
+        }
+        match lang:
+            case "de":
+                return {
+                    number_score_de: float(score_de) + float(_pronunciation_accuracy),
+                    number_score_en: float(score_en),
+                    **output
+                }
+            case "en":
+                return {
+                    number_score_en: float(score_en) + float(_pronunciation_accuracy),
+                    number_score_de: float(score_de),
+                    **output
+                }
+            case _:
+                raise NotImplementedError(f"Language {lang} not supported")
 
     btn.click(
-        lambdaSpeechToScore.get_speech_to_score_tuple,
-        inputs=[learner_transcription, learner_recording, language],
+        get_updated_score_by_language,
+        inputs=[text_learner_transcription, audio_learner_recording_stt, radio_language, number_score_de, number_score_en],
         outputs=[
-            transcripted_text,
-            letter_correctness,
-            pronunciation_accuracy,
-            recording_ipa,
-            ideal_ipa,
-            res,
+            text_transcribed_hidden,
+            text_letter_correctness,
+            number_pronunciation_accuracy,
+            text_recording_ipa,
+            text_ideal_ipa,
+            text_raw_json_output_hidden,
+            number_score_de, number_score_en
         ],
+    )
+    btn_run_tts.click(
+        fn=lambdaTTS.get_tts,
+        inputs=[text_learner_transcription, radio_language],
+        outputs=audio_tts,
+    )
+    btn_random_phrase.click(
+        lambdaGetSample.get_random_selection,
+        inputs=[radio_language, radio_difficulty],
+        outputs=[text_learner_transcription],
+    )
+    btn_random_phrase.click(
+        clear2,
+        inputs=[],
+        outputs=[audio_learner_recording_stt, audio_tts]
     )
     html_output.change(
         None,
-        inputs=[transcripted_text, letter_correctness],
+        inputs=[text_transcribed_hidden, text_letter_correctness],
         outputs=[html_output],
-        js=js,
+        js=js.js_update_ipa_output,
     )
+    
+    @gradio_app.load(inputs=[local_storage], outputs=[number_score_de, number_score_en])
+    def load_from_local_storage(saved_values):
+        print("loading from local storage", saved_values)
+        return saved_values[0], saved_values[1]
+
+    @gr.on([number_score_de.change, number_score_en.change], inputs=[number_score_de, number_score_en], outputs=[local_storage])
+    def save_to_local_storage(score_de, score_en):
+        return [score_de, score_en]
 
 
 if __name__ == "__main__":

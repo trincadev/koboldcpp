@@ -63,10 +63,7 @@ def lambda_handler(event, context):
     try:
         current_transcript = str(body["transcript"])
     except KeyError:
-        lambda_df_lang = lambda_database[language]
-        current_transcript = lambda_df_lang.get_random_sample_from_df(language, category)
-    app_logger.info(f"category={category}, language={language}, current_transcript={current_transcript}.")
-    # sentence_category = getSentenceCategory(current_transcript[0])
+        current_transcript = get_random_selection(language, category, is_gradio_output=False)
     current_transcript = current_transcript if isinstance(current_transcript, str) else current_transcript[0]
     current_ipa = lambda_ipa_converter[language].convertToPhonem(current_transcript)
 
@@ -78,6 +75,13 @@ def lambda_handler(event, context):
     }
 
     return json.dumps(result)
+
+
+def get_random_selection(language: str, category: int, is_gradio_output=True):
+    lambda_df_lang = lambda_database[language]
+    current_transcript = lambda_df_lang.get_random_sample_from_df(language, category)
+    app_logger.info(f"category={category}, language={language}, current_transcript={current_transcript}.")
+    return current_transcript[0] if is_gradio_output else current_transcript
 
 
 def getSentenceCategory(sentence) -> int:

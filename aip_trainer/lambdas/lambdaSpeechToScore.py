@@ -12,15 +12,14 @@ import torch
 from torchaudio.transforms import Resample
 
 from aip_trainer import WordMatching as wm, app_logger
-from aip_trainer import pronunciationTrainer
+from aip_trainer import pronunciationTrainer, sample_rate_start
 
 
 trainer_SST_lambda = {
     'de': pronunciationTrainer.getTrainer("de"),
     'en': pronunciationTrainer.getTrainer("en")
 }
-
-transform = Resample(orig_freq=48000, new_freq=16000)
+transform = Resample(orig_freq=sample_rate_start, new_freq=16000)
 
 
 def lambda_handler(event, context):
@@ -53,6 +52,14 @@ def get_speech_to_score_dict(real_text: str, file_bytes_or_audiotmpfile: str | d
     app_logger.info(f"real_text:{real_text} ...")
     app_logger.debug(f"file_bytes:{file_bytes_or_audiotmpfile} ...")
     app_logger.info(f"language:{language} ...")
+
+    if real_text is None or len(real_text) == 0:
+        raise ValueError(f"cannot read an empty/None text: '{real_text}'...")
+    if language is None or len(language) == 0:
+        raise NotImplementedError(f"Not tested/supported with '{language}' language...")
+    if not isinstance(file_bytes_or_audiotmpfile, (bytes, bytearray)) and (file_bytes_or_audiotmpfile is None or len(file_bytes_or_audiotmpfile) == 0 or os.path.getsize(file_bytes_or_audiotmpfile) == 0):
+        raise ValueError(f"cannot read an empty/None file: '{file_bytes_or_audiotmpfile}'...")
+
     start0 = time.time()
 
     random_file_name = file_bytes_or_audiotmpfile
@@ -119,12 +126,12 @@ def get_speech_to_score_dict(real_text: str, file_bytes_or_audiotmpfile: str | d
     duration = time.time() - start
     duration_tot = time.time() - start0
     app_logger.info(f'Time to post-process results: {duration}, tot_duration:{duration_tot}.')
-    pronunciation_accuracy = str(int(result['pronunciation_accuracy']))
+    pronunciation_accuracy = float(result['pronunciation_accuracy'])
     ipa_transcript = result['recording_ipa']
 
     return {'real_transcript': result['recording_transcript'],
            'ipa_transcript': ipa_transcript,
-           'pronunciation_accuracy': pronunciation_accuracy,
+           'pronunciation_accuracy': float(f"{pronunciation_accuracy:.2f}"),
            'real_transcripts': real_transcripts, 'matched_transcripts': matched_transcripts,
            'real_transcripts_ipa': real_transcripts_ipa, 'matched_transcripts_ipa': matched_transcripts_ipa,
            'pair_accuracy_category': pair_accuracy_category,
